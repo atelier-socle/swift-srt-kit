@@ -25,6 +25,7 @@ disabled_rules:
   - blanket_disable_command
   - trailing_whitespace
   - opening_brace
+  - optional_data_string_conversion
 
 # Rule configurations
 line_length:

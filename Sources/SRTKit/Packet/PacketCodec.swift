@@ -11,6 +11,33 @@ public enum SRTPacket: Sendable, Hashable {
     case control(SRTControlPacket)
 }
 
+/// A typed Control Information Field (CIF) for SRT control packets.
+///
+/// Each control packet type has a specific CIF format. This enum provides
+/// type-safe access to the parsed CIF data.
+public enum ControlInfoField: Sendable, Equatable {
+    /// Handshake CIF (48 bytes).
+    case handshake(HandshakePacket)
+    /// ACK CIF (4 or 28 bytes).
+    case ack(ACKPacket)
+    /// NAK CIF (variable length loss list).
+    case nak(NAKPacket)
+    /// Drop request CIF (8 bytes).
+    case dropRequest(DropRequestPacket)
+    /// Key material CIF (variable length).
+    case keyMaterial(KeyMaterialPacket)
+    /// Keep-alive (no CIF).
+    case keepalive
+    /// Shutdown (no CIF).
+    case shutdown
+    /// ACK-ACK (no CIF).
+    case ackack
+    /// Peer error with error code.
+    case peerError(UInt32)
+    /// Raw bytes for unknown or untyped CIF.
+    case raw([UInt8])
+}
+
 /// Codec for encoding and decoding SRT packets to/from `ByteBuffer`.
 ///
 /// All fields are big-endian (network byte order). The F bit (bit 0 of word 0)
@@ -177,6 +204,113 @@ public enum PacketCodec: Sendable {
             destinationSocketID: destinationSocketID,
             controlInfoField: controlInfoField
         )
+    }
+
+    // MARK: - Typed CIF Encoding/Decoding
+
+    /// Decodes a control packet's CIF based on its type.
+    ///
+    /// - Parameters:
+    ///   - controlType: The type of the control packet.
+    ///   - buffer: The buffer containing the CIF bytes.
+    ///   - cifLength: The length of the CIF in bytes.
+    ///   - typeSpecificInfo: The type-specific info from the control header.
+    /// - Returns: The decoded typed CIF.
+    /// - Throws: `SRTError.invalidPacket` if the CIF is invalid.
+    public static func decodeCIF(
+        controlType: ControlType,
+        from buffer: inout ByteBuffer,
+        cifLength: Int,
+        typeSpecificInfo: UInt32 = 0
+    ) throws -> ControlInfoField {
+        switch controlType {
+        case .handshake:
+            return .handshake(try HandshakePacket.decode(from: &buffer))
+        case .ack:
+            return .ack(try ACKPacket.decode(from: &buffer, cifLength: cifLength))
+        case .nak:
+            return .nak(try NAKPacket.decode(from: &buffer, cifLength: cifLength))
+        case .dropreq:
+            return .dropRequest(try DropRequestPacket.decode(from: &buffer, messageNumber: typeSpecificInfo))
+        case .keepalive:
+            return .keepalive
+        case .shutdown:
+            return .shutdown
+        case .ackack:
+            return .ackack
+        case .peererror:
+            return decodePeerErrorCIF(from: &buffer, cifLength: cifLength)
+        case .congestion, .userDefined:
+            return try decodeRawCIF(from: &buffer, cifLength: cifLength)
+        }
+    }
+
+    /// Decodes a peer error CIF from the buffer.
+    private static func decodePeerErrorCIF(from buffer: inout ByteBuffer, cifLength: Int) -> ControlInfoField {
+        if cifLength >= 4, let code = buffer.readInteger(as: UInt32.self) {
+            return .peerError(code)
+        }
+        return .peerError(0)
+    }
+
+    /// Decodes a raw CIF from the buffer.
+    private static func decodeRawCIF(from buffer: inout ByteBuffer, cifLength: Int) throws -> ControlInfoField {
+        guard cifLength > 0 else { return .raw([]) }
+        guard let bytes = buffer.readBytes(length: cifLength) else {
+            throw SRTError.invalidPacket("Failed to read raw CIF")
+        }
+        return .raw(bytes)
+    }
+
+    /// Encodes a control packet with a typed CIF into a buffer.
+    ///
+    /// - Parameters:
+    ///   - controlType: The control packet type.
+    ///   - subtype: The control packet subtype.
+    ///   - typeSpecificInfo: The type-specific info field.
+    ///   - timestamp: The packet timestamp.
+    ///   - destinationSocketID: The destination socket ID.
+    ///   - cif: The typed CIF to encode.
+    ///   - buffer: The buffer to write into.
+    public static func encode(
+        controlType: ControlType,
+        subtype: UInt16 = 0,
+        typeSpecificInfo: UInt32 = 0,
+        timestamp: UInt32 = 0,
+        destinationSocketID: UInt32 = 0,
+        cif: ControlInfoField,
+        into buffer: inout ByteBuffer
+    ) {
+        // Write control header
+        var word0 = UInt32(0x8000_0000)
+        word0 |= UInt32(controlType.rawValue) << 16
+        word0 |= UInt32(subtype)
+        buffer.writeInteger(word0)
+        buffer.writeInteger(typeSpecificInfo)
+        buffer.writeInteger(timestamp)
+        buffer.writeInteger(destinationSocketID)
+
+        // Write CIF
+        switch cif {
+        case .handshake(let hs):
+            hs.encode(into: &buffer)
+        case .ack(let ack):
+            ack.encode(into: &buffer)
+        case .nak(let nak):
+            nak.encode(into: &buffer)
+        case .dropRequest(let drop):
+            drop.encode(into: &buffer)
+        case .keyMaterial(let km):
+            km.encode(into: &buffer)
+        case .peerError(let code):
+            buffer.writeInteger(code)
+        case .raw(let bytes):
+            if !bytes.isEmpty {
+                buffer.writeBytes(bytes)
+            }
+        case .keepalive, .shutdown, .ackack:
+            break
+        }
     }
 
     private static func encodeControl(_ packet: SRTControlPacket, into buffer: inout ByteBuffer) {
