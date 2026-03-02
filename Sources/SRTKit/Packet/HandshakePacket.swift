@@ -10,17 +10,32 @@ import NIOCore
 /// including version, encryption, MTU, flow window, peer address, and more.
 public struct HandshakePacket: Sendable, Equatable {
     /// The type of handshake message.
-    public enum HandshakeType: UInt32, Sendable, Hashable, CaseIterable, CustomStringConvertible {
+    ///
+    /// Modeled as a struct so that arbitrary UInt32 values (including SRT rejection
+    /// reason codes) can be represented without failing at decode time.
+    public struct HandshakeType: Sendable, Hashable, CustomStringConvertible {
+        /// The raw UInt32 value on the wire.
+        public let rawValue: UInt32
+
+        /// Creates a handshake type from a raw UInt32 value.
+        /// - Parameter rawValue: The raw value.
+        public init(rawValue: UInt32) {
+            self.rawValue = rawValue
+        }
+
         /// Handshake completed successfully.
-        case done = 0xFFFF_FFFD
+        public static let done = HandshakeType(rawValue: 0xFFFF_FFFD)
         /// Agreement phase (rendezvous mode).
-        case agreement = 0xFFFF_FFFE
+        public static let agreement = HandshakeType(rawValue: 0xFFFF_FFFE)
         /// Conclusion phase (final handshake).
-        case conclusion = 0xFFFF_FFFF
+        public static let conclusion = HandshakeType(rawValue: 0xFFFF_FFFF)
         /// Initial waveahand (first packet from caller).
-        case waveahand = 0x0000_0000
+        public static let waveahand = HandshakeType(rawValue: 0x0000_0000)
         /// Induction phase (listener response to waveahand).
-        case induction = 0x0000_0001
+        public static let induction = HandshakeType(rawValue: 0x0000_0001)
+
+        /// All known handshake type cases.
+        public static let allCases: [HandshakeType] = [.done, .agreement, .conclusion, .waveahand, .induction]
 
         /// A human-readable description of the handshake type.
         public var description: String {
@@ -30,6 +45,7 @@ public struct HandshakePacket: Sendable, Equatable {
             case .conclusion: "conclusion"
             case .waveahand: "waveahand"
             case .induction: "induction"
+            default: "unknown(0x\(String(rawValue, radix: 16)))"
             }
         }
     }
@@ -151,9 +167,7 @@ public struct HandshakePacket: Sendable, Equatable {
         else {
             throw SRTError.invalidPacket("Failed to read handshake CIF fields")
         }
-        guard let hsType = HandshakeType(rawValue: hsTypeRaw) else {
-            throw SRTError.invalidPacket("Unknown handshake type: 0x\(String(hsTypeRaw, radix: 16))")
-        }
+        let hsType = HandshakeType(rawValue: hsTypeRaw)
         let peerAddr = try SRTPeerAddress.decode(from: &buffer)
 
         return HandshakePacket(
