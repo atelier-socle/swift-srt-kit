@@ -62,6 +62,24 @@ public struct SequenceNumber: Sendable, Hashable, CustomStringConvertible {
         lhs + (-rhs)
     }
 
+    /// Advances a sequence number in place by a signed offset.
+    ///
+    /// - Parameters:
+    ///   - lhs: The sequence number to advance.
+    ///   - rhs: The signed offset to add.
+    public static func += (lhs: inout SequenceNumber, rhs: Int32) {
+        lhs = lhs + rhs
+    }
+
+    /// Retreats a sequence number in place by a signed offset.
+    ///
+    /// - Parameters:
+    ///   - lhs: The sequence number to retreat.
+    ///   - rhs: The signed offset to subtract.
+    public static func -= (lhs: inout SequenceNumber, rhs: Int32) {
+        lhs = lhs - rhs
+    }
+
     /// A textual representation of the sequence number.
     public var description: String {
         "\(value)"
