@@ -58,7 +58,12 @@ public struct HandshakeConfiguration: Sendable {
     ) {
         self.localSocketID = localSocketID
         self.srtVersion = srtVersion
-        self.srtFlags = srtFlags
+        // Automatically set .crypt flag when encryption is configured
+        if passphrase != nil && cipherType != 0 {
+            self.srtFlags = srtFlags.union(.crypt)
+        } else {
+            self.srtFlags = srtFlags.subtracting(.crypt)
+        }
         self.senderTSBPDDelay = senderTSBPDDelay
         self.receiverTSBPDDelay = receiverTSBPDDelay
         self.maxTransmissionUnitSize = maxTransmissionUnitSize

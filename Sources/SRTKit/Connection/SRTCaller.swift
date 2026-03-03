@@ -459,10 +459,12 @@ extension SRTCaller {
                 case .completed(let result):
                     return result
                 case .sendPacket(let pkt, let exts):
+                    // HSv5: CONCLUSION destSocketID must be 0.
+                    // The listener routes by SYN cookie, not destSocketID.
                     try await sendHandshakePacket(
                         pkt, extensions: exts,
                         channel: channel,
-                        destinationSocketID: decoded.packet.srtSocketID,
+                        destinationSocketID: 0,
                         clock: clock
                     )
                 case .error(let error):
