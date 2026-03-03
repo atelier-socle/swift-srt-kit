@@ -49,7 +49,7 @@ public struct ProgressDisplay: Sendable {
         let rate = elapsed > 0 ? Double(bytes) * 8.0 / elapsed : 0
         let rateStr = formatBitrate(UInt64(rate))
         printErr(
-            "\r\(byteStr) sent, \(packets) packets, \(rateStr)",
+            "\r\(byteStr) sent, \(packets) packets, \(rateStr)\u{1B}[K",
             newline: false
         )
     }
@@ -95,21 +95,11 @@ public struct ProgressDisplay: Sendable {
 
     /// Format byte count for display.
     static func formatBytes(_ bytes: UInt64) -> String {
-        if bytes < 1024 { return "\(bytes) B" }
-        if bytes < 1_048_576 { return String(format: "%.1f KB", Double(bytes) / 1024) }
-        if bytes < 1_073_741_824 {
-            return String(format: "%.1f MB", Double(bytes) / 1_048_576)
-        }
-        return String(format: "%.2f GB", Double(bytes) / 1_073_741_824)
+        StatisticsFormatter.formatBytes(bytes)
     }
 
     /// Format bitrate for display.
     static func formatBitrate(_ bps: UInt64) -> String {
-        if bps < 1000 { return "\(bps) bps" }
-        if bps < 1_000_000 { return String(format: "%.1f Kbps", Double(bps) / 1000) }
-        if bps < 1_000_000_000 {
-            return String(format: "%.1f Mbps", Double(bps) / 1_000_000)
-        }
-        return String(format: "%.2f Gbps", Double(bps) / 1_000_000_000)
+        StatisticsFormatter.formatBitrate(bps)
     }
 }

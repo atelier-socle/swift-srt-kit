@@ -81,7 +81,7 @@ public struct ProbeCommand: AsyncParsableCommand {
                 }
 
                 let currentTime = SystemSRTClock().now()
-                let stats = SRTStatistics()
+                let stats = await caller.statistics()
                 action = engine.feedStepResult(
                     statistics: stats,
                     stepStartTime: stepStart,

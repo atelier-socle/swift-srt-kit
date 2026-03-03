@@ -56,6 +56,7 @@ public struct TestCommand: AsyncParsableCommand {
             try await sendTestData(caller: setup.caller)
 
         let totalDuration = elapsedSeconds(since: startTime)
+        let stats = await setup.caller.statistics()
 
         await setup.caller.disconnect()
         setup.receiveTask.cancel()
@@ -64,7 +65,8 @@ public struct TestCommand: AsyncParsableCommand {
         printResults(
             sentBytes: sentBytes,
             sentPackets: sentPackets,
-            totalDuration: totalDuration
+            totalDuration: totalDuration,
+            statistics: stats
         )
     }
 
@@ -157,7 +159,8 @@ public struct TestCommand: AsyncParsableCommand {
     private func printResults(
         sentBytes: UInt64,
         sentPackets: UInt64,
-        totalDuration: Double
+        totalDuration: Double,
+        statistics: SRTStatistics
     ) {
         let actualBitrate =
             totalDuration > 0
@@ -176,5 +179,16 @@ public struct TestCommand: AsyncParsableCommand {
             "Actual bitrate:  \(String(format: "%.0f", actualBitrate / 1000)) kbps"
         )
         print("Latency:         \(latency)ms")
+        print("")
+        print("=== Connection Statistics ===")
+        print("Packets sent:    \(statistics.packetsSent)")
+        print("Packets recv:    \(statistics.packetsReceived)")
+        print("Bytes sent:      \(StatisticsFormatter.formatBytes(statistics.bytesSent))")
+        print(
+            "RTT:             \(StatisticsFormatter.formatDuration(statistics.rttMicroseconds))"
+        )
+        print(
+            "Loss rate:       \(String(format: "%.2f%%", statistics.lossRate * 100))"
+        )
     }
 }

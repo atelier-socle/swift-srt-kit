@@ -124,6 +124,14 @@ public actor SRTCaller {
     /// Event stream.
     public var events: AsyncStream<SRTConnectionEvent> { eventStream }
 
+    /// Current connection statistics snapshot.
+    ///
+    /// - Returns: Statistics from the underlying socket, or empty if not connected.
+    public func statistics() async -> SRTStatistics {
+        guard let socket else { return SRTStatistics() }
+        return await socket.statistics()
+    }
+
     /// Connect to the remote listener.
     ///
     /// Performs full handshake (induction + conclusion) over real UDP I/O.

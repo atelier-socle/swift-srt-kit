@@ -66,9 +66,7 @@ public struct StatsCommand: AsyncParsableCommand {
             try await Task.sleep(for: .seconds(interval))
             iteration += 1
 
-            // In a full implementation, we would read statistics
-            // from the socket's pipeline. For now we show the snapshot.
-            let stats = SRTStatistics()
+            let stats = await caller.statistics()
             print("\n--- Statistics snapshot #\(iteration) ---")
             print(StatisticsFormatter.format(stats))
 

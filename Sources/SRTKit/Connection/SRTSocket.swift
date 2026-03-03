@@ -67,6 +67,9 @@ public actor SRTSocket {
     /// Microsecond-precision clock.
     private let clock: any SRTClockProtocol
 
+    /// Statistics collector for tracking connection metrics.
+    private var statisticsCollector = StatisticsCollector()
+
     /// Create a socket.
     ///
     /// - Parameters:
@@ -106,6 +109,13 @@ public actor SRTSocket {
 
     /// Connection events stream.
     public var events: AsyncStream<SRTConnectionEvent> { eventStream }
+
+    /// Current connection statistics snapshot.
+    ///
+    /// - Returns: A snapshot of all collected statistics.
+    public func statistics() -> SRTStatistics {
+        statisticsCollector.snapshot(at: clock.now())
+    }
 
     /// Send data.
     ///
@@ -192,6 +202,7 @@ public actor SRTSocket {
         let ackAction = pipeline.pendingACK(currentTime: currentTime)
         switch ackAction {
         case .sendFullACK(let ackSeqNum, let lastACKed):
+            statisticsCollector.recordACKSent()
             let ackPacket = ACKPacket(acknowledgementNumber: lastACKed)
             sendControlToWire(
                 controlType: .ack,
@@ -199,11 +210,25 @@ public actor SRTSocket {
                 cif: .ack(ackPacket)
             )
         case .sendLightACK(let lastACKed):
+            statisticsCollector.recordACKSent()
             let lightACK = ACKPacket(acknowledgementNumber: lastACKed)
             sendControlToWire(controlType: .ack, cif: .ack(lightACK))
         case .none:
             break
         }
+
+        // Update statistics from pipeline state
+        statisticsCollector.updateTiming(
+            rttMicroseconds: pipeline.currentRTT,
+            rttVarianceMicroseconds: 0
+        )
+        statisticsCollector.updateBuffers(
+            sendBufferPackets: pipeline.sendBufferCount,
+            sendBufferCapacity: 8192,
+            receiveBufferPackets: pipeline.receiveBufferCount,
+            receiveBufferCapacity: 8192,
+            flowWindowAvailable: 25600
+        )
 
         // Poll TSBPD delivery
         let delivered = pipeline.pollDelivery(currentTime: currentTime)
@@ -291,6 +316,9 @@ public actor SRTSocket {
 
     /// Handle a received data packet.
     private func handleDataPacket(_ packet: SRTDataPacket) throws {
+        statisticsCollector.recordPacketReceived(
+            payloadSize: packet.payload.count)
+
         if state == .connected {
             transitionTo(.transferring)
         }
@@ -309,8 +337,13 @@ public actor SRTSocket {
                 deliverPayload(
                     pkt.payload, sequenceNumber: pkt.sequenceNumber)
             }
-        case .buffered, .duplicate, .tooLate:
+        case .buffered:
             break
+        case .duplicate:
+            statisticsCollector.recordDuplicate()
+        case .tooLate:
+            statisticsCollector.recordPacketDropped(
+                payloadSize: packet.payload.count)
         }
     }
 
@@ -328,7 +361,7 @@ public actor SRTSocket {
         case .ack:
             break  // Would parse ACK CIF and call pipeline.processACK
         case .nak:
-            break  // Would parse NAK CIF and call pipeline.processNAK
+            statisticsCollector.recordPacketLost()
         default:
             break
         }
@@ -336,6 +369,7 @@ public actor SRTSocket {
 
     /// Encode and send a data packet to the wire via the channel.
     private func sendDataPacketToWire(_ pkt: PacketPipeline.SRTPacketData) {
+        statisticsCollector.recordPacketSent(payloadSize: pkt.payload.count)
         guard let channel else { return }
         let destID = peerSocketID ?? 0
         let dataPacket = SRTDataPacket(

@@ -33,7 +33,7 @@ struct ProgressDisplayTests {
     @Test("formatBytes handles gigabytes")
     func formatBytesGB() {
         let result = ProgressDisplay.formatBytes(2_147_483_648)
-        #expect(result == "2.00 GB")
+        #expect(result == "2.0 GB")
     }
 
     @Test("formatBitrate handles small values")
