@@ -19,4 +19,8 @@ public enum SRTConnectionEvent: Sendable {
     case keyRotated(newKeyIndex: KeyRotation.KeyIndex)
     /// Statistics snapshot.
     case statisticsUpdate
+    /// Adaptive bitrate recommendation based on network conditions.
+    case bitrateRecommendation(BitrateRecommendation)
+    /// Recording statistics update.
+    case recordingUpdate(RecordingStatistics)
 }
