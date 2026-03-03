@@ -9,3 +9,11 @@ coverage:
     patch:
       default:
         target: 90%
+
+ignore:
+  # Network I/O actors — validated by 15 manual test scenarios
+  # and bidirectional interop with libsrt 1.5.4 (encrypted + unencrypted)
+  - "Sources/SRTKit/Connection/SRTCaller.swift"
+  - "Sources/SRTKit/Connection/SRTListener.swift"
+  # CLI commands — require real network, validated by manual testing
+  - "Sources/SRTKitCommands/**"
