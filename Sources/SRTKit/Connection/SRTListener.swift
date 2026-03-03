@@ -216,10 +216,13 @@ extension SRTListener {
                 at: buf.readerIndex + 12, as: UInt32.self) ?? 0
 
         if destSocketID != 0 {
-            if let mux = multiplexer {
+            if let mux = multiplexer,
+                await mux.hasRegistration(for: destSocketID)
+            {
                 await mux.dispatch(datagram)
+                return
             }
-            return
+            // Not registered — likely a handshake conclusion
         }
 
         await handleHandshakeDatagram(datagram)
@@ -315,6 +318,7 @@ extension SRTListener {
         if let result = handshakeResult {
             await createAcceptedSocket(
                 result: result,
+                localSocketID: hsConfig.localSocketID,
                 remoteAddress: datagram.remoteAddress
             )
         }
@@ -339,11 +343,12 @@ extension SRTListener {
     /// Create a socket from a completed handshake and register it.
     private func createAcceptedSocket(
         result: HandshakeResult,
+        localSocketID: UInt32,
         remoteAddress: SocketAddress
     ) async {
         guard let transport, let multiplexer else { return }
 
-        let socketID = UInt32.random(in: 1...UInt32.max)
+        let socketID = localSocketID
         let negotiatedLatency =
             UInt64(
                 max(result.senderTSBPDDelay, result.receiverTSBPDDelay))
@@ -355,7 +360,7 @@ extension SRTListener {
             multiplexer: multiplexer,
             remoteAddress: remoteAddress
         )
-        _ = await udpChannel.open()
+        let channelStream = await udpChannel.open()
 
         let pipelineConfig = PacketPipeline.Configuration(
             latencyMicroseconds: negotiatedLatency,
@@ -372,8 +377,23 @@ extension SRTListener {
             peerSocketID: result.peerSocketID,
             negotiatedLatency: negotiatedLatency
         )
+        await socket.transitionTo(.connecting)
+        await socket.transitionTo(.handshaking)
         await socket.transitionTo(.connected)
 
+        startSocketTasks(
+            socket: socket, socketID: socketID,
+            channelStream: channelStream)
+
+        acceptConnection(socket)
+    }
+
+    /// Start tick and receive forwarding tasks for an accepted socket.
+    private func startSocketTasks(
+        socket: SRTSocket,
+        socketID: UInt32,
+        channelStream: AsyncStream<IncomingDatagram>
+    ) {
         Task { [weak self, clock] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(10))
@@ -385,7 +405,16 @@ extension SRTListener {
             }
         }
 
-        acceptConnection(socket)
+        Task { [socket] in
+            for await datagram in channelStream {
+                let buf = datagram.data
+                guard buf.readableBytes >= PacketCodec.minimumHeaderSize
+                else { continue }
+                let bytes = Array(buf.readableBytesView)
+                try? await socket.handleIncomingPacket(
+                    bytes, from: datagram.remoteAddress)
+            }
+        }
     }
 
     /// Send a handshake response via the transport.

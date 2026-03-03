@@ -58,6 +58,9 @@ public actor SRTSocket {
     /// Received data queue for pull-mode receive.
     private var receivedData: [[UInt8]] = []
 
+    /// Pending receive waiters (continuations waiting for data).
+    private var receiveWaiters: [CheckedContinuation<[UInt8]?, Never>] = []
+
     /// Optional UDP channel for wire I/O (nil in unit tests).
     private let channel: UDPChannel?
 
@@ -117,15 +120,18 @@ public actor SRTSocket {
         return try sendInternal(payload)
     }
 
-    /// Receive data (pull mode).
+    /// Receive data.
     ///
-    /// - Returns: Next delivered payload, or nil if closed.
+    /// Waits until data is available or the connection closes.
+    /// - Returns: Next delivered payload, or nil if closed/not connected.
     public func receive() async -> [UInt8]? {
-        guard !state.isTerminal else { return nil }
+        guard state.isActive else { return nil }
         if !receivedData.isEmpty {
             return receivedData.removeFirst()
         }
-        return nil
+        return await withCheckedContinuation { continuation in
+            receiveWaiters.append(continuation)
+        }
     }
 
     /// Close the connection gracefully.
@@ -202,11 +208,7 @@ public actor SRTSocket {
         // Poll TSBPD delivery
         let delivered = pipeline.pollDelivery(currentTime: currentTime)
         for pkt in delivered {
-            receivedData.append(pkt.payload)
-            eventContinuation.yield(
-                .dataReceived(
-                    payload: pkt.payload,
-                    sequenceNumber: pkt.sequenceNumber))
+            deliverPayload(pkt.payload, sequenceNumber: pkt.sequenceNumber)
         }
     }
 
@@ -223,6 +225,10 @@ public actor SRTSocket {
         state = newState
         eventContinuation.yield(.stateChanged(from: oldState, to: newState))
         if newState.isTerminal {
+            for waiter in receiveWaiters {
+                waiter.resume(returning: nil)
+            }
+            receiveWaiters.removeAll()
             eventContinuation.finish()
         }
         return true
@@ -247,6 +253,21 @@ public actor SRTSocket {
     }
 
     // MARK: - Private
+
+    /// Deliver a payload to a waiter or the receive queue.
+    private func deliverPayload(
+        _ payload: [UInt8], sequenceNumber: SequenceNumber
+    ) {
+        eventContinuation.yield(
+            .dataReceived(
+                payload: payload, sequenceNumber: sequenceNumber))
+        if !receiveWaiters.isEmpty {
+            let waiter = receiveWaiters.removeFirst()
+            waiter.resume(returning: payload)
+        } else {
+            receivedData.append(payload)
+        }
+    }
 
     /// Send payload through the pipeline.
     private func sendInternal(_ payload: [UInt8]) throws -> Int {
@@ -285,11 +306,8 @@ public actor SRTSocket {
         switch result {
         case .deliver(let payloads):
             for pkt in payloads {
-                receivedData.append(pkt.payload)
-                eventContinuation.yield(
-                    .dataReceived(
-                        payload: pkt.payload,
-                        sequenceNumber: pkt.sequenceNumber))
+                deliverPayload(
+                    pkt.payload, sequenceNumber: pkt.sequenceNumber)
             }
         case .buffered, .duplicate, .tooLate:
             break

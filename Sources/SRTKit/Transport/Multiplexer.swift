@@ -99,6 +99,14 @@ public actor Multiplexer {
         Set(registrations.keys)
     }
 
+    /// Whether a registration exists for the given socket ID.
+    ///
+    /// - Parameter socketID: The socket ID to check.
+    /// - Returns: True if a connection is registered for this socket ID.
+    public func hasRegistration(for socketID: UInt32) -> Bool {
+        registrations[socketID] != nil
+    }
+
     // MARK: - Private
 
     /// Extracts the Destination Socket ID from bytes 12–15 of an SRT packet.

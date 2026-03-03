@@ -342,6 +342,8 @@ extension SRTCaller {
             peerSocketID: result.peerSocketID,
             negotiatedLatency: negotiatedLatency
         )
+        await srtSocket.transitionTo(.connecting)
+        await srtSocket.transitionTo(.handshaking)
         await srtSocket.transitionTo(.connected)
         self.socket = srtSocket
 
