@@ -2,6 +2,8 @@
 // Copyright 2026 Atelier Socle SAS
 
 import ArgumentParser
+import Foundation
+import SRTKit
 
 /// Listen for incoming SRT data and save to file or stdout.
 ///
@@ -43,20 +45,101 @@ public struct ReceiveCommand: AsyncParsableCommand {
 
     /// Runs the receive command.
     public mutating func run() async throws {
-        print("Listening on \(bind):\(port)")
-        if let output {
-            print("Output: \(output)")
-        } else {
-            print("Output: stdout")
+        let config = ConfigurationFactory.listenerConfiguration(
+            bind: bind, port: port,
+            passphrase: passphrase, latency: latency
+        )
+
+        let listener = SRTListener(configuration: config)
+
+        ProgressDisplay.listening(host: bind, port: port)
+        try await listener.start()
+
+        let actualPort = await listener.boundPort ?? port
+        if actualPort != port {
+            ProgressDisplay.listening(host: bind, port: actualPort)
         }
-        if let latency {
-            print("Latency: \(latency)ms")
+
+        let outputHandle = try openOutputHandle()
+        let durationSeconds = duration
+        let startTime = ContinuousClock.now
+
+        let (totalBytes, totalPackets) = await receiveData(
+            listener: listener,
+            outputHandle: outputHandle,
+            durationSeconds: durationSeconds,
+            startTime: startTime
+        )
+
+        if output != nil {
+            outputHandle.closeFile()
         }
-        if duration > 0 {
-            print("Duration: \(duration)s")
+
+        ProgressDisplay.summary(
+            totalBytes: totalBytes,
+            totalPackets: totalPackets,
+            duration: elapsedSeconds(since: startTime)
+        )
+
+        await listener.stop()
+    }
+
+    /// Open the output file handle (or stdout).
+    private func openOutputHandle() throws -> FileHandle {
+        if let outputPath = output {
+            FileManager.default.createFile(
+                atPath: outputPath, contents: nil)
+            guard let handle = FileHandle(forWritingAtPath: outputPath)
+            else {
+                throw CLIError.fileNotFound(path: outputPath)
+            }
+            return handle
         }
-        if let passphrase {
-            print("Encryption: enabled (\(passphrase.count) char passphrase)")
+        return FileHandle.standardOutput
+    }
+
+    /// Receive data from the first connection.
+    private func receiveData(
+        listener: SRTListener,
+        outputHandle: FileHandle,
+        durationSeconds: Int,
+        startTime: ContinuousClock.Instant
+    ) async -> (UInt64, UInt64) {
+        var totalBytes: UInt64 = 0
+        var totalPackets: UInt64 = 0
+        let connections = await listener.incomingConnections
+
+        for await socket in connections {
+            ProgressDisplay.connected(peerAddress: "peer")
+
+            while true {
+                if durationSeconds > 0 {
+                    let elapsed = elapsedSeconds(since: startTime)
+                    if elapsed >= Double(durationSeconds) { break }
+                }
+
+                guard let data = await socket.receive() else { break }
+                outputHandle.write(Data(data))
+                totalBytes += UInt64(data.count)
+                totalPackets += 1
+                ProgressDisplay.transferProgress(
+                    bytes: totalBytes,
+                    packets: totalPackets,
+                    elapsed: elapsedSeconds(since: startTime)
+                )
+            }
+            break
         }
+
+        return (totalBytes, totalPackets)
+    }
+
+    /// Calculate elapsed seconds from a start time.
+    private func elapsedSeconds(
+        since start: ContinuousClock.Instant
+    ) -> Double {
+        let elapsed = start.duration(to: ContinuousClock.now)
+        let (seconds, attoseconds) = elapsed.components
+        return Double(seconds) + Double(attoseconds) / 1e18
     }
 }

@@ -2,6 +2,7 @@
 // Copyright 2026 Atelier Socle SAS
 
 import ArgumentParser
+import SRTKit
 
 /// Connect and display real-time statistics.
 ///
@@ -42,10 +43,41 @@ public struct StatsCommand: AsyncParsableCommand {
 
     /// Runs the stats command.
     public mutating func run() async throws {
-        print("Connecting to \(host):\(port) for statistics")
+        let config = try ConfigurationFactory.callerConfiguration(
+            host: host, port: port,
+            options: .init(
+                streamID: streamID, passphrase: passphrase)
+        )
+
+        let caller = SRTCaller(configuration: config)
+
+        ProgressDisplay.connecting(host: host, port: port)
+        try await caller.connect()
+        ProgressDisplay.connected(peerAddress: "\(host):\(port)")
+
         print("Refresh interval: \(interval)s")
         if quality {
             print("Quality scoring: enabled")
         }
+
+        // Statistics loop
+        var iteration = 0
+        while !Task.isCancelled {
+            try await Task.sleep(for: .seconds(interval))
+            iteration += 1
+
+            // In a full implementation, we would read statistics
+            // from the socket's pipeline. For now we show the snapshot.
+            let stats = SRTStatistics()
+            print("\n--- Statistics snapshot #\(iteration) ---")
+            print(StatisticsFormatter.format(stats))
+
+            if quality {
+                let qualityScore = SRTConnectionQuality.from(statistics: stats)
+                print(StatisticsFormatter.formatQuality(qualityScore))
+            }
+        }
+
+        await caller.disconnect()
     }
 }

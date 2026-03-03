@@ -2,6 +2,8 @@
 // Copyright 2026 Atelier Socle SAS
 
 import ArgumentParser
+import Foundation
+import SRTKit
 
 /// Send data from a file to an SRT listener.
 ///
@@ -47,23 +49,80 @@ public struct SendCommand: AsyncParsableCommand {
 
     /// Runs the send command.
     public mutating func run() async throws {
-        print("Sending to \(host):\(port)")
-        if let file {
-            print("Source: \(file)")
-        } else {
-            print("Source: stdin")
+        let config = try ConfigurationFactory.callerConfiguration(
+            host: host, port: port,
+            options: .init(
+                streamID: streamID, passphrase: passphrase,
+                preset: preset, latency: latency)
+        )
+
+        let caller = SRTCaller(configuration: config)
+
+        ProgressDisplay.connecting(host: host, port: port)
+        try await caller.connect()
+        ProgressDisplay.connected(peerAddress: "\(host):\(port)")
+
+        let chunkSize = 1316
+        var totalBytes: UInt64 = 0
+        var totalPackets: UInt64 = 0
+        let startTime = ContinuousClock.now
+
+        do {
+            if let filePath = file {
+                guard FileManager.default.fileExists(atPath: filePath) else {
+                    throw CLIError.fileNotFound(path: filePath)
+                }
+                guard let handle = FileHandle(forReadingAtPath: filePath) else {
+                    throw CLIError.fileNotFound(path: filePath)
+                }
+                defer { handle.closeFile() }
+
+                while true {
+                    let data = handle.readData(ofLength: chunkSize)
+                    if data.isEmpty { break }
+                    let bytes = Array(data)
+                    _ = try await caller.send(bytes)
+                    totalBytes += UInt64(bytes.count)
+                    totalPackets += 1
+                    let elapsed = elapsedSeconds(since: startTime)
+                    ProgressDisplay.transferProgress(
+                        bytes: totalBytes,
+                        packets: totalPackets,
+                        elapsed: elapsed
+                    )
+                }
+            } else {
+                // Read from stdin
+                while let data = readLine(strippingNewline: false) {
+                    let bytes = Array(data.utf8)
+                    guard !bytes.isEmpty else { continue }
+                    for start in stride(from: 0, to: bytes.count, by: chunkSize) {
+                        let end = min(start + chunkSize, bytes.count)
+                        let chunk = Array(bytes[start..<end])
+                        _ = try await caller.send(chunk)
+                        totalBytes += UInt64(chunk.count)
+                        totalPackets += 1
+                    }
+                }
+            }
+        } catch {
+            ProgressDisplay.error(String(describing: error))
         }
-        if let preset {
-            print("Preset: \(preset)")
-        }
-        if let latency {
-            print("Latency: \(latency)ms")
-        }
-        if let passphrase {
-            print("Encryption: enabled (\(passphrase.count) char passphrase)")
-        }
-        if let streamID {
-            print("StreamID: \(streamID)")
-        }
+
+        let duration = elapsedSeconds(since: startTime)
+        ProgressDisplay.summary(
+            totalBytes: totalBytes,
+            totalPackets: totalPackets,
+            duration: duration
+        )
+
+        await caller.disconnect()
+    }
+
+    /// Calculate elapsed seconds from a start time.
+    private func elapsedSeconds(since start: ContinuousClock.Instant) -> Double {
+        let elapsed = start.duration(to: ContinuousClock.now)
+        let (seconds, attoseconds) = elapsed.components
+        return Double(seconds) + Double(attoseconds) / 1e18
     }
 }

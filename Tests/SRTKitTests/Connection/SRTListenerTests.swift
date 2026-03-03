@@ -64,16 +64,17 @@ struct SRTListenerTests {
     @Test("start sets isListening to true")
     func startSetsListening() async throws {
         let listener = SRTListener(
-            configuration: .init(port: 4200))
+            configuration: .init(port: 0))
         try await listener.start()
         let listening = await listener.isListening
         #expect(listening)
+        await listener.stop()
     }
 
     @Test("stop sets isListening to false")
     func stopClearsListening() async throws {
         let listener = SRTListener(
-            configuration: .init(port: 4200))
+            configuration: .init(port: 0))
         try await listener.start()
         await listener.stop()
         let listening = await listener.isListening
@@ -83,7 +84,7 @@ struct SRTListenerTests {
     @Test("Double start throws alreadyListening")
     func doubleStartThrows() async throws {
         let listener = SRTListener(
-            configuration: .init(port: 4200))
+            configuration: .init(port: 0))
         try await listener.start()
         do {
             try await listener.start()
@@ -93,6 +94,7 @@ struct SRTListenerTests {
         } catch {
             Issue.record("Expected SRTConnectionError")
         }
+        await listener.stop()
     }
 
     @Test("activeConnectionCount starts at 0")
@@ -116,7 +118,7 @@ struct SRTListenerTests {
     @Test("stop terminates the stream")
     func stopTerminatesStream() async throws {
         let listener = SRTListener(
-            configuration: .init(port: 4200))
+            configuration: .init(port: 0))
         try await listener.start()
         await listener.stop()
         // After stop, isListening should be false
@@ -127,19 +129,20 @@ struct SRTListenerTests {
     @Test("acceptConnection increments activeConnectionCount")
     func acceptConnectionIncrementsCount() async throws {
         let listener = SRTListener(
-            configuration: .init(port: 4200))
+            configuration: .init(port: 0))
         try await listener.start()
 
         let socket = SRTSocket(role: .listener, socketID: 1)
         await listener.acceptConnection(socket)
         let count = await listener.activeConnectionCount
         #expect(count == 1)
+        await listener.stop()
     }
 
     @Test("removeConnection decrements activeConnectionCount")
     func removeConnectionDecrementsCount() async throws {
         let listener = SRTListener(
-            configuration: .init(port: 4200))
+            configuration: .init(port: 0))
         try await listener.start()
 
         let socket = SRTSocket(role: .listener, socketID: 1)
@@ -147,12 +150,13 @@ struct SRTListenerTests {
         await listener.removeConnection(socketID: 1)
         let count = await listener.activeConnectionCount
         #expect(count == 0)
+        await listener.stop()
     }
 
     @Test("stop closes all active connections and resets count")
     func stopClosesAllConnections() async throws {
         let listener = SRTListener(
-            configuration: .init(port: 4200))
+            configuration: .init(port: 0))
         try await listener.start()
 
         let socket1 = SRTSocket(role: .listener, socketID: 1)

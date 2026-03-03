@@ -58,6 +58,12 @@ public actor SRTSocket {
     /// Received data queue for pull-mode receive.
     private var receivedData: [[UInt8]] = []
 
+    /// Optional UDP channel for wire I/O (nil in unit tests).
+    private let channel: UDPChannel?
+
+    /// Microsecond-precision clock.
+    private let clock: any SRTClockProtocol
+
     /// Create a socket.
     ///
     /// - Parameters:
@@ -67,13 +73,17 @@ public actor SRTSocket {
     ///   - pipelineConfiguration: Pipeline configuration.
     ///   - connectionConfiguration: Connection manager configuration.
     ///   - congestionController: Congestion controller to use.
+    ///   - channel: Optional UDP channel for wire I/O.
+    ///   - clock: Clock for timestamps (defaults to system clock).
     public init(
         role: Role,
         socketID: UInt32,
         peerAddress: SocketAddress? = nil,
         pipelineConfiguration: PacketPipeline.Configuration = .init(),
         connectionConfiguration: ConnectionManager.Configuration = .init(),
-        congestionController: any CongestionController = LiveCC()
+        congestionController: any CongestionController = LiveCC(),
+        channel: UDPChannel? = nil,
+        clock: any SRTClockProtocol = SystemSRTClock()
     ) {
         self.role = role
         self.socketID = socketID
@@ -82,6 +92,8 @@ public actor SRTSocket {
         self.connectionManager = ConnectionManager(configuration: connectionConfiguration)
         self.congestionController = congestionController
         self.pacer = PacketPacer()
+        self.channel = channel
+        self.clock = clock
 
         let (stream, continuation) = AsyncStream.makeStream(
             of: SRTConnectionEvent.self)
@@ -119,8 +131,9 @@ public actor SRTSocket {
     /// Close the connection gracefully.
     public func close() {
         guard !state.isTerminal else { return }
-        let currentTime = currentTimeMicroseconds()
+        let currentTime = clock.now()
         connectionManager.beginShutdown(at: currentTime)
+        sendControlToWire(controlType: .shutdown, cif: .shutdown)
         transitionTo(.closing)
     }
 
@@ -133,7 +146,7 @@ public actor SRTSocket {
         _ data: [UInt8],
         from address: SocketAddress
     ) throws {
-        connectionManager.peerResponseReceived(at: currentTimeMicroseconds())
+        connectionManager.peerResponseReceived(at: clock.now())
 
         // Parse packet using PacketCodec
         var buffer = ByteBuffer(bytes: data)
@@ -157,6 +170,7 @@ public actor SRTSocket {
         switch action {
         case .sendKeepalive:
             connectionManager.keepaliveSent(at: currentTime)
+            sendControlToWire(controlType: .keepalive, cif: .keepalive)
         case .timeout:
             transitionTo(.broken)
             eventContinuation.yield(.keepaliveTimeout)
@@ -171,8 +185,16 @@ public actor SRTSocket {
         // Check pending ACK
         let ackAction = pipeline.pendingACK(currentTime: currentTime)
         switch ackAction {
-        case .sendFullACK, .sendLightACK:
-            break  // Socket would send ACK packet here via transport
+        case .sendFullACK(let ackSeqNum, let lastACKed):
+            let ackPacket = ACKPacket(acknowledgementNumber: lastACKed)
+            sendControlToWire(
+                controlType: .ack,
+                typeSpecificInfo: ackSeqNum,
+                cif: .ack(ackPacket)
+            )
+        case .sendLightACK(let lastACKed):
+            let lightACK = ACKPacket(acknowledgementNumber: lastACKed)
+            sendControlToWire(controlType: .ack, cif: .ack(lightACK))
         case .none:
             break
         }
@@ -228,7 +250,7 @@ public actor SRTSocket {
 
     /// Send payload through the pipeline.
     private func sendInternal(_ payload: [UInt8]) throws -> Int {
-        let currentTime = currentTimeMicroseconds()
+        let currentTime = clock.now()
         let result = try pipeline.processSend(
             payload: payload, currentTime: currentTime)
         switch result {
@@ -238,6 +260,7 @@ public actor SRTSocket {
                     payloadSize: pkt.payload.count,
                     timestamp: pkt.timestamp)
                 pacer.packetSent(at: currentTime)
+                sendDataPacketToWire(pkt)
             }
             return payload.count
         case .bufferFull:
@@ -256,7 +279,7 @@ public actor SRTSocket {
             sequenceNumber: packet.sequenceNumber,
             timestamp: packet.timestamp,
             header: [],
-            currentTime: currentTimeMicroseconds()
+            currentTime: clock.now()
         )
 
         switch result {
@@ -293,10 +316,43 @@ public actor SRTSocket {
         }
     }
 
-    /// Get current time in microseconds (monotonic approximation).
-    private func currentTimeMicroseconds() -> UInt64 {
-        // In real implementation this would use SRTClock
-        // For now use a simple counter or wall clock
-        0
+    /// Encode and send a data packet to the wire via the channel.
+    private func sendDataPacketToWire(_ pkt: PacketPipeline.SRTPacketData) {
+        guard let channel else { return }
+        let destID = peerSocketID ?? 0
+        let dataPacket = SRTDataPacket(
+            sequenceNumber: pkt.sequenceNumber,
+            position: .single,
+            orderFlag: false,
+            encryptionKey: .none,
+            retransmitted: pkt.isRetransmit,
+            messageNumber: 0,
+            timestamp: pkt.timestamp,
+            destinationSocketID: destID,
+            payload: pkt.payload
+        )
+        var buffer = ByteBuffer()
+        PacketCodec.encode(.data(dataPacket), into: &buffer)
+        Task { try? await channel.send(buffer) }
+    }
+
+    /// Encode and send a control packet to the wire via the channel.
+    private func sendControlToWire(
+        controlType: ControlType,
+        typeSpecificInfo: UInt32 = 0,
+        cif: ControlInfoField
+    ) {
+        guard let channel else { return }
+        let destID = peerSocketID ?? 0
+        var buffer = ByteBuffer()
+        PacketCodec.encode(
+            controlType: controlType,
+            typeSpecificInfo: typeSpecificInfo,
+            timestamp: UInt32(truncatingIfNeeded: clock.now()),
+            destinationSocketID: destID,
+            cif: cif,
+            into: &buffer
+        )
+        Task { try? await channel.send(buffer) }
     }
 }

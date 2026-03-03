@@ -68,13 +68,15 @@ struct SRTCallerTests {
         #expect(state == .idle)
     }
 
-    @Test("connect transitions through connecting to handshaking")
-    func connectTransitions() async throws {
+    @Test("completeHandshake transitions to connected")
+    func completeHandshakeTransitions() async {
         let caller = SRTCaller(
             configuration: .init(host: "127.0.0.1", port: 4200))
-        try await caller.connect()
+        let socket = SRTSocket(role: .caller, socketID: 42)
+        await caller.completeHandshake(
+            socket: socket, peerSocketID: 99, negotiatedLatency: 120_000)
         let state = await caller.state
-        #expect(state == .handshaking)
+        #expect(state == .connected)
     }
 
     @Test("disconnect transitions to closed")
