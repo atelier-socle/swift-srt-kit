@@ -33,6 +33,9 @@ public struct ProbeCommand: AsyncParsableCommand {
     /// Creates a new instance.
     public init() {}
 
+    /// Maximum wall-clock time per step before force-advancing.
+    private static let stepTimeoutSeconds: UInt64 = 5
+
     /// Runs the probe command.
     public mutating func run() async throws {
         let probeConfig = try PresetParser.parseProbeConfiguration(mode)
@@ -55,30 +58,19 @@ public struct ProbeCommand: AsyncParsableCommand {
         // Run probe engine
         var engine = ProbeEngine(configuration: probeConfig)
         var action = engine.start()
-        let chunkSize = 1316
 
         probeLoop: while true {
             switch action {
             case .sendAtBitrate(let bps, let stepIndex):
                 print("Step \(stepIndex + 1): sending at \(bps / 1000) kbps...")
                 let stepStart = SystemSRTClock().now()
-                let bytesPerSecond = bps / 8
-                let packetInterval =
-                    bytesPerSecond > 0
-                    ? Double(chunkSize) / Double(bytesPerSecond)
-                    : 0.1
-                let stepDuration = probeConfig.stepDurationMicroseconds
 
-                let testData = [UInt8](repeating: 0xBB, count: chunkSize)
-                let deadline = stepStart + stepDuration
-
-                while SystemSRTClock().now() < deadline {
-                    _ = try? await caller.send(testData)
-                    if packetInterval > 0 {
-                        try await Task.sleep(
-                            nanoseconds: UInt64(packetInterval * 1_000_000_000))
-                    }
-                }
+                await runStepWithTimeout(
+                    caller: caller,
+                    targetBps: bps,
+                    stepDuration: probeConfig.stepDurationMicroseconds,
+                    stepStart: stepStart
+                )
 
                 let currentTime = SystemSRTClock().now()
                 let stats = await caller.statistics()
@@ -104,5 +96,43 @@ public struct ProbeCommand: AsyncParsableCommand {
         }
 
         await caller.disconnect()
+    }
+
+    /// Sends data for the step duration, with a hard wall-clock timeout.
+    private func runStepWithTimeout(
+        caller: SRTCaller,
+        targetBps: UInt64,
+        stepDuration: UInt64,
+        stepStart: UInt64
+    ) async {
+        let chunkSize = 1316
+        let bytesPerSecond = targetBps / 8
+        let packetInterval =
+            bytesPerSecond > 0
+            ? Double(chunkSize) / Double(bytesPerSecond)
+            : 0.1
+        let testData = [UInt8](repeating: 0xBB, count: chunkSize)
+        let deadline = stepStart + stepDuration
+
+        await withTaskGroup(of: Void.self) { group in
+            // Send loop
+            group.addTask {
+                while !Task.isCancelled && SystemSRTClock().now() < deadline {
+                    _ = try? await caller.send(testData)
+                    guard !Task.isCancelled else { break }
+                    if packetInterval > 0 {
+                        try? await Task.sleep(
+                            nanoseconds: UInt64(packetInterval * 1_000_000_000))
+                    }
+                }
+            }
+            // Hard timeout
+            group.addTask {
+                try? await Task.sleep(for: .seconds(Self.stepTimeoutSeconds))
+            }
+            // Whichever finishes first wins
+            await group.next()
+            group.cancelAll()
+        }
     }
 }
