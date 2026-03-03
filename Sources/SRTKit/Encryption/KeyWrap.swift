@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Atelier Socle SAS
 
-import Crypto
-import _CryptoExtras
+@preconcurrency import Crypto
+@preconcurrency import _CryptoExtras
 
 /// AES Key Wrap (RFC 3394) implementation.
 ///

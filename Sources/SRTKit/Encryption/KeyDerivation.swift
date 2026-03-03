@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Atelier Socle SAS
 
-import Crypto
+@preconcurrency import Crypto
 
 /// PBKDF2-HMAC-SHA1 key derivation for SRT.
 ///
