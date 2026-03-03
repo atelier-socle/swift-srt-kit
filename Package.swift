@@ -11,18 +11,18 @@ let package = Package(
         .iOS(.v17),
         .tvOS(.v17),
         .watchOS(.v10),
-        .visionOS(.v1),
+        .visionOS(.v1)
     ],
     products: [
         .library(name: "SRTKit", targets: ["SRTKit"]),
         .library(name: "SRTKitCommands", targets: ["SRTKitCommands"]),
-        .executable(name: "srt-cli", targets: ["SRTKitCLI"]),
+        .executable(name: "srt-cli", targets: ["SRTKitCLI"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.77.0"),
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.10.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
-        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.3"),
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.3")
     ],
     targets: [
         .target(
@@ -31,14 +31,14 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "Crypto", package: "swift-crypto"),
-                .product(name: "_CryptoExtras", package: "swift-crypto"),
+                .product(name: "_CryptoExtras", package: "swift-crypto")
             ]
         ),
         .target(
             name: "SRTKitCommands",
             dependencies: [
                 "SRTKit",
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
             ]
         ),
         .executableTarget(
@@ -52,6 +52,6 @@ let package = Package(
         .testTarget(
             name: "SRTKitCommandsTests",
             dependencies: ["SRTKitCommands"]
-        ),
+        )
     ]
 )

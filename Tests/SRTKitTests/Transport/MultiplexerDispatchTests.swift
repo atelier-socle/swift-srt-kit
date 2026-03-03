@@ -203,7 +203,6 @@ struct MultiplexerDispatchTests {
     @Test("Packet too short (< 16 bytes) uses Socket ID 0")
     func shortPacketUsesZero() async throws {
         let mux = Multiplexer()
-        let addr = try makeAddress(port: 5000)
         let peerAddr = try makeAddress(port: 6000)
         let stream = await mux.register(socketID: 0xAAAA, remoteAddress: peerAddr)
 

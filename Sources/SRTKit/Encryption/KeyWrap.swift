@@ -201,7 +201,6 @@ public enum KeyWrap: Sendable {
         _ block: [UInt8],
         key: SymmetricKey
     ) throws -> [UInt8] {
-        let zeroIV = [UInt8](repeating: 0, count: 16)
         // For decryption, we need to provide a block that will decrypt properly.
         // AES-CBC decrypt: first block → AES_Decrypt(key, block) XOR IV
         // With IV = 0: AES_Decrypt(key, block) XOR 0 = AES_Decrypt(key, block)
@@ -235,26 +234,6 @@ public enum KeyWrap: Sendable {
         // The correct solution: use try AES._CBC.decrypt()  with careful padding handling.
         // We need to supply a two-block ciphertext where the second block decrypts
         // to valid PKCS7 padding.
-        //
-        // Better: encrypt 16 bytes of 0x10 (which is valid PKCS7 padding for 16-byte block)
-        // using AES-ECB (via CBC with zero IV). Then use that as the second ciphertext block.
-        let paddingPlain = [UInt8](repeating: 16, count: 16)
-        var paddingPadded = paddingPlain
-        paddingPadded.append(contentsOf: [UInt8](repeating: 16, count: 16))
-        let paddingEncrypted = try AES._CBC.encrypt(
-            paddingPadded, using: key, iv: AES._CBC.IV(ivBytes: [UInt8](repeating: 0, count: 16)))
-        let paddingBlock = Array(paddingEncrypted[0..<16])
-
-        // Now construct: ciphertext = block || paddingBlock
-        // CBC decrypt:
-        //   P1 = AES_Decrypt(key, block) XOR IV  (IV=0, so P1 = AES_Decrypt(key, block))
-        //   P2 = AES_Decrypt(key, paddingBlock) XOR block
-        // P2 should be a valid PKCS7 padding block for the decrypt to succeed.
-        // AES_Decrypt(key, paddingBlock) = paddingPlain (0x10 * 16)  [since we encrypted it]
-        // Wait no: AES_Encrypt(key, paddingPlain XOR 0) = paddingEncrypted[0:16]
-        // So AES_Decrypt(key, paddingEncrypted[0:16]) = paddingPlain
-        // P2 = paddingPlain XOR block = [0x10 ^ b[0], 0x10 ^ b[1], ...]
-        // This won't be valid PKCS7 padding in general.
         //
         // Different approach: generate the padding ciphertext block such that
         // its decryption XOR'd with our target block gives valid PKCS7 padding.

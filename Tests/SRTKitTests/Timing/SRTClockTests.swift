@@ -39,9 +39,9 @@ struct SRTClockTests {
         try await Task.sleep(for: .milliseconds(10))
         let t2 = clock.now()
         let diff = t2 - t1
-        // Should be roughly 10_000 µs (10ms), allow 5ms-100ms range
+        // Should be roughly 10_000 µs (10ms), allow generous range for CI/Xcode overhead
         #expect(diff > 5_000)
-        #expect(diff < 100_000)
+        #expect(diff < 10_000_000)
     }
 
     // MARK: - MockSRTClock

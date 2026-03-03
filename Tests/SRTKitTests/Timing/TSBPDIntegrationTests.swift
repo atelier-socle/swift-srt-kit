@@ -14,7 +14,7 @@ struct TSBPDIntegrationTests {
             configuration: .init(latencyMicroseconds: latency),
             baseTime: 1_000_000, firstTimestamp: 0
         )
-        var dropper = TooLatePacketDrop()
+        let dropper = TooLatePacketDrop()
         var deliveredCount = 0
 
         for i: UInt32 in 0..<100 {
@@ -101,7 +101,7 @@ struct TSBPDIntegrationTests {
             configuration: .init(latencyMicroseconds: latency),
             baseTime: 1_000_000, firstTimestamp: 0
         )
-        var dropper = TooLatePacketDrop()
+        let dropper = TooLatePacketDrop()
         var deliveredCount = 0
         var droppedCount = 0
 
@@ -176,7 +176,7 @@ struct TSBPDIntegrationTests {
             configuration: .init(latencyMicroseconds: latency),
             baseTime: 1_000_000, firstTimestamp: 0
         )
-        var dropper = TooLatePacketDrop()
+        let dropper = TooLatePacketDrop()
 
         let senderTs: UInt32 = 50_000
         let delivTime = tsbpd.deliveryTime(packetTimestamp: senderTs, driftCorrection: 0)
