@@ -11,8 +11,14 @@ public enum KeyDerivation: Sendable {
     /// Default iteration count for PBKDF2.
     public static let defaultIterations: Int = 2048
 
-    /// Salt size in bytes.
+    /// Salt size in bytes (full KM salt).
     public static let saltSize: Int = 16
+
+    /// PBKDF2 salt size in bytes.
+    ///
+    /// libsrt uses only the last 8 bytes of the 16-byte KM salt for PBKDF2
+    /// key derivation (`HAICRYPT_PBKDF2_SALT_LEN` in `haicrypt.h`).
+    public static let pbkdf2SaltSize: Int = 8
 
     /// Minimum passphrase length.
     public static let minPassphraseLength: Int = 10
@@ -40,9 +46,13 @@ public enum KeyDerivation: Sendable {
             throw SRTEncryptionError.invalidSaltSize(got: salt.count)
         }
         let passphraseBytes = Array(passphrase.utf8)
+        // libsrt uses only the last 8 bytes of the 16-byte salt for PBKDF2:
+        //   KEK = PBKDF2(Pwd, LSB(64, Salt), Iter, Klen)
+        // See hcrypt_sa.c: &ctx->salt[ctx->salt_len - pbkdf_salt_len]
+        let pbkdf2Salt = Array(salt.suffix(pbkdf2SaltSize))
         return pbkdf2HMACSHA1(
             password: passphraseBytes,
-            salt: salt,
+            salt: pbkdf2Salt,
             iterations: iterations,
             derivedKeyLength: keySize.rawValue
         )

@@ -162,7 +162,7 @@ public actor SRTCaller {
             socketID: setup.socketID, channel: setup.channel,
             channelStream: setup.channelStream)
 
-        await finalizeConnection(
+        try await finalizeConnection(
             result: result, socketID: setup.socketID,
             channel: setup.channel, transport: setup.transport)
     }
@@ -330,7 +330,7 @@ extension SRTCaller {
         socketID: UInt32,
         channel: UDPChannel,
         transport: UDPTransport
-    ) async {
+    ) async throws {
         let negotiatedLatency =
             UInt64(
                 max(result.senderTSBPDDelay, result.receiverTSBPDDelay))
@@ -350,6 +350,15 @@ extension SRTCaller {
             peerSocketID: result.peerSocketID,
             negotiatedLatency: negotiatedLatency
         )
+
+        // Configure encryption if key material was negotiated
+        if let sek = result.encryptionSEK, let salt = result.encryptionSalt {
+            try await srtSocket.configureEncryption(
+                sek: sek, salt: salt,
+                cipherMode: configuration.cipherMode,
+                keySize: configuration.keySize)
+        }
+
         await srtSocket.transitionTo(.connecting)
         await srtSocket.transitionTo(.handshaking)
         await srtSocket.transitionTo(.connected)

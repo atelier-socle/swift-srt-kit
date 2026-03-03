@@ -20,6 +20,13 @@ public struct ListenerHandshake: Sendable {
     /// Returns nil to accept the connection, or a ``SRTRejectionReason`` to reject it.
     public typealias AccessControlHandler = @Sendable (String) -> SRTRejectionReason?
 
+    /// The unwrapped Stream Encrypting Key from the caller's KMREQ.
+    private var unwrappedSEK: [UInt8] = []
+    /// The salt from the caller's KMREQ.
+    private var receivedSalt: [UInt8] = []
+    /// The received KMREQ to echo back as KMRSP.
+    private var receivedKMREQ: KeyMaterialPacket?
+
     /// Creates a new listener handshake state machine.
     ///
     /// - Parameter configuration: The handshake configuration.
@@ -150,6 +157,7 @@ public struct ListenerHandshake: Sendable {
     private struct ParsedExtensions {
         var hsreq: SRTHandshakeExtension?
         var streamID: String?
+        var kmreq: KeyMaterialPacket?
         var error: [HandshakeAction]?
     }
 
@@ -173,6 +181,8 @@ public struct ListenerHandshake: Sendable {
                     reason: .unsecure, handshake: handshake, peerAddress: peerAddress
                 )
                 return parsed
+            case .kmreq(let km):
+                parsed.kmreq = km
             default:
                 break
             }
@@ -181,6 +191,17 @@ public struct ListenerHandshake: Sendable {
         if let error = checkEncryptionMismatch(extensions, handshake: handshake, peerAddress: peerAddress) {
             parsed.error = error
             return parsed
+        }
+
+        // Unwrap SEK from KMREQ if encryption is configured
+        if let km = parsed.kmreq, let passphrase = configuration.passphrase {
+            if let error = unwrapKeyMaterial(
+                km: km, passphrase: passphrase,
+                handshake: handshake, peerAddress: peerAddress
+            ) {
+                parsed.error = error
+                return parsed
+            }
         }
 
         if let sid = parsed.streamID, let handler = accessControl,
@@ -192,6 +213,36 @@ public struct ListenerHandshake: Sendable {
             )
         }
         return parsed
+    }
+
+    /// Unwraps the SEK from a KMREQ using the passphrase.
+    ///
+    /// On success stores the unwrapped SEK, salt, and KMREQ in `self`.
+    /// - Returns: Error actions on failure, or nil on success.
+    private mutating func unwrapKeyMaterial(
+        km: KeyMaterialPacket,
+        passphrase: String,
+        handshake: HandshakePacket,
+        peerAddress: SRTPeerAddress
+    ) -> [HandshakeAction]? {
+        guard let keySize = KeySize(rawValue: Int(km.keyLength)) else {
+            state = .failed
+            return buildRejection(
+                reason: .rdvCookie, handshake: handshake, peerAddress: peerAddress)
+        }
+        do {
+            let kek = try KeyDerivation.deriveKEK(
+                passphrase: passphrase, salt: km.salt, keySize: keySize)
+            let sek = try KeyWrap.unwrap(wrappedKey: km.wrappedKeys, withKEK: kek)
+            unwrappedSEK = sek
+            receivedSalt = km.salt
+            receivedKMREQ = km
+            return nil
+        } catch {
+            state = .failed
+            return buildRejection(
+                reason: .rdvCookie, handshake: handshake, peerAddress: peerAddress)
+        }
     }
 
     /// Checks whether the listener expects encryption but the caller provides none.
@@ -267,7 +318,9 @@ public struct ListenerHandshake: Sendable {
             ),
             maxFlowWindowSize: min(configuration.maxFlowWindowSize, handshake.maxFlowWindowSize),
             streamID: streamID,
-            peerAddress: peerAddress
+            peerAddress: peerAddress,
+            encryptionSalt: unwrappedSEK.isEmpty ? nil : receivedSalt,
+            encryptionSEK: unwrappedSEK.isEmpty ? nil : unwrappedSEK
         )
 
         return [
@@ -311,18 +364,14 @@ public struct ListenerHandshake: Sendable {
         ]
     }
 
-    /// Builds a KMRSP key material packet if encryption is configured on both sides.
+    /// Builds a KMRSP key material packet by echoing the received KMREQ.
     private func buildKMRSP(peerEncryptionField: UInt16) -> KeyMaterialPacket? {
         guard configuration.cipherType != 0 && peerEncryptionField != 0 else { return nil }
-        return KeyMaterialPacket(
-            cipher: cipherTypeFromField(configuration.cipherType),
-            salt: Array(repeating: 0, count: 16),
-            keyLength: keyLengthFromCipherType(configuration.cipherType),
-            wrappedKeys: Array(
-                repeating: 0,
-                count: Int(keyLengthFromCipherType(configuration.cipherType)) + 8
-            )
-        )
+        // Echo the received KMREQ as KMRSP per SRT spec
+        if let km = receivedKMREQ {
+            return km
+        }
+        return nil
     }
 
     /// Converts a cipher type field value to a ``KeyMaterialPacket/CipherType``.

@@ -103,7 +103,7 @@ struct RendezvousIntegrationEdgeCaseTests {
     @Test("KMREQ included when passphrase configured")
     func kmreqIncludedWithPassphrase() {
         var peerA = RendezvousHandshake(
-            configuration: makeConfig(localSocketID: 0x2000, passphrase: "secret", cipherType: 2)
+            configuration: makeConfig(localSocketID: 0x2000, passphrase: "testsecret123", cipherType: 2)
         )
         _ = peerA.start()
         let actions = peerA.receive(

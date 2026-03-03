@@ -205,7 +205,7 @@ struct CallerHandshakeTests {
     @Test("Conclusion packet includes KMREQ when passphrase configured")
     func conclusionIncludesKMREQ() {
         var caller = CallerHandshake(
-            configuration: makeConfig(passphrase: "secret", cipherType: 2)
+            configuration: makeConfig(passphrase: "testsecret123", cipherType: 2)
         )
         _ = caller.start()
         let actions = caller.receive(

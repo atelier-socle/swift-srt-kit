@@ -23,6 +23,10 @@ public struct CallerHandshake: Sendable {
     private var peerSocketID: UInt32 = 0
     /// The peer's encryption field value from induction.
     private var peerEncryptionField: UInt16 = 0
+    /// The generated encryption salt (stored for HandshakeResult).
+    private var generatedSalt: [UInt8] = []
+    /// The generated Stream Encrypting Key (stored for HandshakeResult).
+    private var generatedSEK: [UInt8] = []
 
     /// Creates a new caller handshake state machine.
     ///
@@ -140,13 +144,10 @@ public struct CallerHandshake: Sendable {
         extensionsToSend.append(.hsreq(hsreq))
 
         // KMREQ if encryption is configured
-        if configuration.passphrase != nil && configuration.cipherType != 0 {
-            let km = KeyMaterialPacket(
-                cipher: cipherTypeFromField(configuration.cipherType),
-                salt: Array(repeating: 0, count: 16),
-                keyLength: keyLengthFromCipherType(configuration.cipherType),
-                wrappedKeys: Array(repeating: 0, count: Int(keyLengthFromCipherType(configuration.cipherType)) + 8)
-            )
+        if let passphrase = configuration.passphrase, configuration.cipherType != 0 {
+            guard let km = generateKeyMaterial(passphrase: passphrase) else {
+                return [.error(.handshakeFailed("Key material generation failed"))]
+            }
             extensionsToSend.append(.kmreq(km))
         }
 
@@ -193,8 +194,10 @@ public struct CallerHandshake: Sendable {
         // Check for rejection (handshake type is not conclusion/done)
         if handshake.handshakeType != .conclusion && handshake.handshakeType != .done {
             state = .failed
-            let rejCode = handshake.handshakeType.rawValue
-            if let reason = SRTRejectionReason(rawValue: rejCode) {
+            let rawCode = handshake.handshakeType.rawValue
+            // SRT sends rejection codes as 1000 + reason offset on the wire
+            let normalizedCode = rawCode >= 1000 ? rawCode - 1000 : rawCode
+            if let reason = SRTRejectionReason(rawValue: normalizedCode) {
                 return [.error(.connectionRejected(reason))]
             }
             return [.error(.connectionRejected(.unknown))]
@@ -240,9 +243,51 @@ public struct CallerHandshake: Sendable {
             ),
             maxFlowWindowSize: min(configuration.maxFlowWindowSize, handshake.maxFlowWindowSize),
             streamID: streamID ?? configuration.streamID,
-            peerAddress: peerAddress
+            peerAddress: peerAddress,
+            encryptionSalt: generatedSalt.isEmpty ? nil : generatedSalt,
+            encryptionSEK: generatedSEK.isEmpty ? nil : generatedSEK
         )
         return [.completed(result)]
+    }
+
+    /// Generates KMREQ key material (salt, SEK, wrapped keys).
+    ///
+    /// On success stores the generated salt and SEK in `self` for ``HandshakeResult``.
+    /// - Parameter passphrase: The encryption passphrase.
+    /// - Returns: The ``KeyMaterialPacket``, or nil on failure (state set to `.failed`).
+    private mutating func generateKeyMaterial(
+        passphrase: String
+    ) -> KeyMaterialPacket? {
+        let keyLen = keyLengthFromCipherType(configuration.cipherType)
+        guard let keySize = keySizeFromLength(keyLen) else {
+            state = .failed
+            return nil
+        }
+
+        let salt = KeyDerivation.generateSalt()
+        var sek = [UInt8](repeating: 0, count: Int(keyLen))
+        for i in 0..<sek.count {
+            sek[i] = UInt8.random(in: 0...255)
+        }
+
+        do {
+            let kek = try KeyDerivation.deriveKEK(
+                passphrase: passphrase, salt: salt, keySize: keySize)
+            let wrappedKeys = try KeyWrap.wrap(key: sek, withKEK: kek)
+
+            generatedSalt = salt
+            generatedSEK = sek
+
+            return KeyMaterialPacket(
+                cipher: cipherTypeFromField(configuration.cipherType),
+                salt: salt,
+                keyLength: keyLen,
+                wrappedKeys: wrappedKeys
+            )
+        } catch {
+            state = .failed
+            return nil
+        }
     }
 
     /// Converts a cipher type field value to a ``KeyMaterialPacket/CipherType``.
@@ -262,5 +307,10 @@ public struct CallerHandshake: Sendable {
         case 4: 32
         default: 16
         }
+    }
+
+    /// Converts a key length in bytes to a ``KeySize`` enum value.
+    private func keySizeFromLength(_ length: UInt16) -> KeySize? {
+        KeySize(rawValue: Int(length))
     }
 }

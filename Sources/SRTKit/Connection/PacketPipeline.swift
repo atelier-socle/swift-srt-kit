@@ -359,6 +359,9 @@ public struct PacketPipeline: Sendable {
 
     // MARK: - Encryption
 
+    /// Whether encryption is currently configured.
+    public var isEncryptionActive: Bool { encryptor != nil }
+
     /// Configure encryption with derived keys.
     ///
     /// - Parameters:

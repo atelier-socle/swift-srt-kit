@@ -26,6 +26,10 @@ public struct HandshakeResult: Sendable, Equatable {
     public let streamID: String?
     /// The peer's IP address.
     public let peerAddress: SRTPeerAddress
+    /// The encryption salt from key derivation, or nil if no encryption.
+    public let encryptionSalt: [UInt8]?
+    /// The Stream Encrypting Key (SEK), or nil if no encryption.
+    public let encryptionSEK: [UInt8]?
 
     /// Creates a new handshake result.
     ///
@@ -40,6 +44,8 @@ public struct HandshakeResult: Sendable, Equatable {
     ///   - maxFlowWindowSize: The negotiated flow window size.
     ///   - streamID: The stream ID, or nil.
     ///   - peerAddress: The peer's IP address.
+    ///   - encryptionSalt: The encryption salt, or nil.
+    ///   - encryptionSEK: The Stream Encrypting Key, or nil.
     public init(
         peerSocketID: UInt32,
         negotiatedSRTVersion: UInt32,
@@ -50,7 +56,9 @@ public struct HandshakeResult: Sendable, Equatable {
         maxTransmissionUnitSize: UInt32,
         maxFlowWindowSize: UInt32,
         streamID: String?,
-        peerAddress: SRTPeerAddress
+        peerAddress: SRTPeerAddress,
+        encryptionSalt: [UInt8]? = nil,
+        encryptionSEK: [UInt8]? = nil
     ) {
         self.peerSocketID = peerSocketID
         self.negotiatedSRTVersion = negotiatedSRTVersion
@@ -62,5 +70,7 @@ public struct HandshakeResult: Sendable, Equatable {
         self.maxFlowWindowSize = maxFlowWindowSize
         self.streamID = streamID
         self.peerAddress = peerAddress
+        self.encryptionSalt = encryptionSalt
+        self.encryptionSEK = encryptionSEK
     }
 }

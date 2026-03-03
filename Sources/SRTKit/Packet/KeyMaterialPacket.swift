@@ -115,73 +115,92 @@ public struct KeyMaterialPacket: Sendable, Equatable {
 
     /// Encodes this KM CIF into a buffer.
     ///
+    /// Wire format matches libsrt (hcrypt_msg.h):
     /// - Parameter buffer: The buffer to write into.
     public func encode(into buffer: inout ByteBuffer) {
-        // KM wire format:
         // Byte 0:      V(4) | PT(4)
-        // Bytes 1-2:   sign (0x2029)
-        // Byte 3:      KE(4) | cipher(4)
-        // Byte 4:      auth(4) | SE(4)
-        // Byte 5:      reserved (0)
-        // Bytes 6-7:   salt length in 32-bit words
-        // Bytes 8-23:  salt (16 bytes)
-        // Bytes 24-25: key length in 32-bit words
-        // Bytes 26+:   wrapped keys
         buffer.writeInteger(UInt8((version << 4) | (packetType & 0x0F)))
+        // Bytes 1-2:   Sign (0x2029)
         buffer.writeInteger(sign)
-        buffer.writeInteger(UInt8((keyBasedEncryption << 4) | (cipher.rawValue & 0x0F)))
-        buffer.writeInteger(UInt8((authentication << 4) | (streamEncapsulation & 0x0F)))
+        // Byte 3:      KFLGS — Resv(6) | KK(2)
+        buffer.writeInteger(keyBasedEncryption & 0x03)
+        // Bytes 4-7:   KEKI (Key Encryption Key Index, 0 for passphrase)
+        buffer.writeInteger(UInt32(0))
+        // Byte 8:      Cipher
+        buffer.writeInteger(cipher.rawValue)
+        // Byte 9:      Auth
+        buffer.writeInteger(authentication)
+        // Byte 10:     SE
+        buffer.writeInteger(streamEncapsulation)
+        // Byte 11:     Reserved
         buffer.writeInteger(UInt8(0))
-        buffer.writeInteger(UInt16(UInt16(salt.count) / 4))
+        // Bytes 12-13: Reserved2
+        buffer.writeInteger(UInt16(0))
+        // Byte 14:     SLen/4 (salt length in 4-byte words)
+        buffer.writeInteger(UInt8(salt.count / 4))
+        // Byte 15:     KLen/4 (key length in 4-byte words)
+        buffer.writeInteger(UInt8(keyLength / 4))
+        // Bytes 16+:   Salt
         buffer.writeBytes(salt)
-        buffer.writeInteger(UInt16(keyLength / 4))
+        // After salt:  Wrapped keys
         buffer.writeBytes(wrappedKeys)
     }
 
     /// Decodes a KM CIF from a buffer.
     ///
+    /// Wire format matches libsrt (hcrypt_msg.h).
     /// - Parameters:
     ///   - buffer: The buffer to read from.
     ///   - cifLength: The total CIF length in bytes.
     /// - Returns: The decoded key material packet.
     /// - Throws: `SRTError.invalidPacket` if the buffer contains invalid data.
     public static func decode(from buffer: inout ByteBuffer, cifLength: Int) throws -> KeyMaterialPacket {
-        guard cifLength >= 8 else {
+        guard cifLength >= 16 else {
             throw SRTError.invalidPacket("KM CIF too small: \(cifLength) bytes")
         }
+        // Byte 0: V|PT
         guard let byte0 = buffer.readInteger(as: UInt8.self),
+            // Bytes 1-2: Sign
             let signVal = buffer.readInteger(as: UInt16.self),
-            let byte3 = buffer.readInteger(as: UInt8.self),
-            let byte4 = buffer.readInteger(as: UInt8.self),
-            buffer.readInteger(as: UInt8.self) != nil,  // reserved
-            let saltLenWords = buffer.readInteger(as: UInt16.self)
+            // Byte 3: KFLGS (Resv(6)|KK(2))
+            let kflgs = buffer.readInteger(as: UInt8.self),
+            // Bytes 4-7: KEKI
+            buffer.readInteger(as: UInt32.self) != nil,
+            // Byte 8: Cipher
+            let cipherRaw = buffer.readInteger(as: UInt8.self),
+            // Byte 9: Auth
+            let auth = buffer.readInteger(as: UInt8.self),
+            // Byte 10: SE
+            let se = buffer.readInteger(as: UInt8.self),
+            // Byte 11: Reserved
+            buffer.readInteger(as: UInt8.self) != nil,
+            // Bytes 12-13: Reserved2
+            buffer.readInteger(as: UInt16.self) != nil,
+            // Byte 14: SLen/4
+            let saltLenByte = buffer.readInteger(as: UInt8.self),
+            // Byte 15: KLen/4
+            let keyLenByte = buffer.readInteger(as: UInt8.self)
         else {
             throw SRTError.invalidPacket("Failed to read KM header")
         }
 
         let ver = (byte0 >> 4) & 0x0F
         let pt = byte0 & 0x0F
-        let ke = (byte3 >> 4) & 0x0F
-        let cipherRaw = byte3 & 0x0F
-        let auth = (byte4 >> 4) & 0x0F
-        let se = byte4 & 0x0F
+        let ke = kflgs & 0x03
 
         guard let cipherType = CipherType(rawValue: cipherRaw) else {
             throw SRTError.invalidPacket("Unknown cipher type: \(cipherRaw)")
         }
 
-        let saltLen = Int(saltLenWords) * 4
+        let saltLen = Int(saltLenByte) * 4
+        let keyLen = UInt16(keyLenByte) * 4
+
         guard buffer.readableBytes >= saltLen else {
             throw SRTError.invalidPacket("Not enough bytes for salt")
         }
         guard let saltBytes = buffer.readBytes(length: saltLen) else {
             throw SRTError.invalidPacket("Failed to read salt")
         }
-
-        guard let keyLenWords = buffer.readInteger(as: UInt16.self) else {
-            throw SRTError.invalidPacket("Failed to read key length")
-        }
-        let keyLen = UInt16(keyLenWords) * 4
 
         let wrappedKeysLen = buffer.readableBytes
         let wrappedKeys: [UInt8]

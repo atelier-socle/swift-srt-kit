@@ -377,6 +377,15 @@ extension SRTListener {
             peerSocketID: result.peerSocketID,
             negotiatedLatency: negotiatedLatency
         )
+
+        // Configure encryption if key material was negotiated
+        if let sek = result.encryptionSEK, let salt = result.encryptionSalt {
+            try? await socket.configureEncryption(
+                sek: sek, salt: salt,
+                cipherMode: configuration.cipherMode,
+                keySize: configuration.keySize)
+        }
+
         await socket.transitionTo(.connecting)
         await socket.transitionTo(.handshaking)
         await socket.transitionTo(.connected)

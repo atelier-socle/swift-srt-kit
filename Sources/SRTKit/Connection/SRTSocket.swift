@@ -277,6 +277,23 @@ public actor SRTSocket {
                 negotiatedLatency: negotiatedLatency))
     }
 
+    /// Configure encryption on the packet pipeline.
+    ///
+    /// - Parameters:
+    ///   - sek: Stream Encrypting Key bytes.
+    ///   - salt: Encryption salt (16 bytes).
+    ///   - cipherMode: CTR or GCM.
+    ///   - keySize: Key size.
+    public func configureEncryption(
+        sek: [UInt8],
+        salt: [UInt8],
+        cipherMode: CipherMode,
+        keySize: KeySize
+    ) throws {
+        try pipeline.configureEncryption(
+            sek: sek, salt: salt, cipherMode: cipherMode, keySize: keySize)
+    }
+
     // MARK: - Private
 
     /// Deliver a payload to a waiter or the receive queue.
@@ -376,7 +393,7 @@ public actor SRTSocket {
             sequenceNumber: pkt.sequenceNumber,
             position: .single,
             orderFlag: false,
-            encryptionKey: .none,
+            encryptionKey: pipeline.isEncryptionActive ? .even : .none,
             retransmitted: pkt.isRetransmit,
             messageNumber: 0,
             timestamp: pkt.timestamp,

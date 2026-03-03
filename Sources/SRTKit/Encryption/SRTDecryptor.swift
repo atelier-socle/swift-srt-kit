@@ -67,24 +67,36 @@ public struct SRTDecryptor: Sendable {
 
     // MARK: - Private
 
-    /// Build the 16-byte CTR IV.
+    /// Build the 16-byte CTR IV matching libsrt's `hcrypt_SetCtrIV`.
+    ///
+    /// Layout: `zeros[16]`, place pki at bytes 10-13, XOR salt[0..<14].
+    /// Bytes 14-15 are the block counter (0, incremented by AES-CTR).
     private func ctrIV(sequenceNumber: SequenceNumber) -> [UInt8] {
-        var iv = Array(salt[0..<12])
-        let seqValue = sequenceNumber.value.bigEndian
-        withUnsafeBytes(of: seqValue) { buf in
-            iv.append(contentsOf: buf)
+        var iv = [UInt8](repeating: 0, count: 16)
+        let seqBE = sequenceNumber.value.bigEndian
+        withUnsafeBytes(of: seqBE) { buf in
+            iv[10] = buf[0]
+            iv[11] = buf[1]
+            iv[12] = buf[2]
+            iv[13] = buf[3]
         }
+        for i in 0..<14 { iv[i] ^= salt[i] }
         return iv
     }
 
-    /// Build the 12-byte GCM nonce.
+    /// Build the 12-byte GCM nonce matching libsrt's `hcrypt_SetGcmIV` (v1.5.4+).
+    ///
+    /// Layout: `zeros[12]`, place pki at bytes 8-11, XOR salt[0..<12].
     private func gcmNonce(sequenceNumber: SequenceNumber) -> [UInt8] {
-        var nonce = Array(salt[0..<4])
-        let seqValue = sequenceNumber.value.bigEndian
-        withUnsafeBytes(of: seqValue) { buf in
-            nonce.append(contentsOf: buf)
+        var nonce = [UInt8](repeating: 0, count: 12)
+        let seqBE = sequenceNumber.value.bigEndian
+        withUnsafeBytes(of: seqBE) { buf in
+            nonce[8] = buf[0]
+            nonce[9] = buf[1]
+            nonce[10] = buf[2]
+            nonce[11] = buf[3]
         }
-        nonce.append(contentsOf: [0, 0, 0, 0])
+        for i in 0..<12 { nonce[i] ^= salt[i] }
         return nonce
     }
 
