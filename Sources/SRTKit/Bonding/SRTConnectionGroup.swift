@@ -60,7 +60,7 @@ public actor SRTConnectionGroup {
     /// Add a member to the group.
     ///
     /// - Parameter member: The member to add.
-    /// - Throws: ``BondingError/groupFull`` or ``BondingError/duplicateMember``.
+    /// - Throws: ``BondingError/groupFull(maxMembers:)`` or ``BondingError/duplicateMember(id:)``.
     public func addMember(_ member: GroupMember) throws {
         guard memberList.count < configuration.maxMembers else {
             throw BondingError.groupFull(
@@ -99,7 +99,7 @@ public actor SRTConnectionGroup {
     /// - Parameters:
     ///   - id: The member ID.
     ///   - status: The new status.
-    /// - Throws: ``BondingError/memberNotFound`` or ``BondingError/invalidStatusTransition``.
+    /// - Throws: ``BondingError/memberNotFound(id:)`` or ``BondingError/invalidStatusTransition(from:to:)``.
     public func updateMemberStatus(
         id: UInt32, to status: LinkStatus
     ) throws {

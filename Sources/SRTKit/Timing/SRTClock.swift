@@ -38,7 +38,7 @@ public struct SystemSRTClock: SRTClockProtocol, Sendable {
 /// Mock clock for deterministic testing.
 ///
 /// Allows tests to control time precisely, advancing it
-/// manually without real-time delays. Uses ``OSAllocatedUnfairLock``
+/// manually without real-time delays. Uses `OSAllocatedUnfairLock`
 /// for thread-safe Sendable conformance.
 public final class MockSRTClock: SRTClockProtocol, Sendable {
     /// Thread-safe time storage.

@@ -63,7 +63,7 @@ public struct RendezvousHandshake: Sendable {
     /// - Parameters:
     ///   - handshake: The received handshake CIF.
     ///   - extensions: Any extensions received with the handshake.
-    ///   - from: The sender's address.
+    ///   - peerAddr: The sender's address.
     /// - Returns: An array of actions to take next.
     public mutating func receive(
         handshake: HandshakePacket,

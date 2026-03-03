@@ -37,7 +37,7 @@ public struct ConfigurationFactory: Sendable {
     ///   - host: Remote host.
     ///   - port: Remote port.
     ///   - options: Optional caller parameters.
-    /// - Returns: A configured ``SRTCaller/Configuration``.
+    /// - Returns: A configured `SRTCaller.Configuration`.
     /// - Throws: ``CLIError`` if preset name is invalid.
     public static func callerConfiguration(
         host: String,
@@ -87,7 +87,7 @@ public struct ConfigurationFactory: Sendable {
     ///   - port: Listen port.
     ///   - passphrase: Optional encryption passphrase.
     ///   - latency: Optional latency override in milliseconds.
-    /// - Returns: A configured ``SRTListener/Configuration``.
+    /// - Returns: A configured `SRTListener.Configuration`.
     public static func listenerConfiguration(
         bind: String,
         port: Int,

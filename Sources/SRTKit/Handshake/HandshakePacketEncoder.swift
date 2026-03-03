@@ -7,7 +7,7 @@ import NIOCore
 ///
 /// Bridges the gap between the handshake state machine (which produces
 /// ``HandshakeAction/sendPacket(_:extensions:)``) and the transport layer
-/// (which sends raw ``ByteBuffer``). Handles the 16-byte SRT control header,
+/// (which sends raw `ByteBuffer`). Handles the 16-byte SRT control header,
 /// 48-byte CIF, and variable-length extension TLV blocks.
 public enum HandshakePacketEncoder: Sendable {
 

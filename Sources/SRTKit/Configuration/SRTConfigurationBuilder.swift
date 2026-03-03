@@ -91,7 +91,7 @@ public struct SRTConfigurationBuilder: Sendable {
 
     /// Set FEC.
     ///
-    /// - Parameter configuration: FEC configuration.
+    /// - Parameter fecConfiguration: FEC configuration.
     /// - Returns: A new builder with FEC configured.
     public func fec(_ fecConfiguration: FECConfiguration) -> SRTConfigurationBuilder {
         var builder = self

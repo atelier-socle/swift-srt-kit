@@ -75,7 +75,7 @@ public struct SRTConfiguration: Sendable {
         }
     }
 
-    /// Create a ``SRTCaller.Configuration`` from this configuration.
+    /// Create a `SRTCaller.Configuration` from this configuration.
     ///
     /// - Returns: A caller configuration with mapped fields.
     public func callerConfiguration() -> SRTCaller.Configuration {
@@ -93,7 +93,7 @@ public struct SRTConfiguration: Sendable {
         )
     }
 
-    /// Create a ``SRTListener.Configuration`` from this configuration.
+    /// Create a `SRTListener.Configuration` from this configuration.
     ///
     /// - Returns: A listener configuration with mapped fields.
     public func listenerConfiguration() -> SRTListener.Configuration {
