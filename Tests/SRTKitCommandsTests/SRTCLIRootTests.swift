@@ -23,9 +23,9 @@ struct SRTCLIRootTests {
         #expect(!abstract.isEmpty)
     }
 
-    @Test("Can create instance")
-    func canCreateInstance() {
-        let root = SRTCLIRoot()
-        #expect(type(of: root) == SRTCLIRoot.self)
+    @Test("Has 6 subcommands")
+    func hasSubcommands() {
+        let subs = SRTCLIRoot.configuration.subcommands
+        #expect(subs.count == 6)
     }
 }

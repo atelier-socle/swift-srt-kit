@@ -3,21 +3,23 @@
 
 import ArgumentParser
 
-/// Root command for the SRT CLI tool.
-public struct SRTCLIRoot: ParsableCommand {
+/// Root command for the srt-cli tool.
+public struct SRTCLIRoot: AsyncParsableCommand {
     /// Configuration for the CLI command.
     public static let configuration = CommandConfiguration(
         commandName: "srt-cli",
-        abstract: "Pure Swift SRT protocol tool",
-        version: "0.1.0"
+        abstract: "SRT streaming toolkit — pure Swift implementation",
+        version: "0.1.0",
+        subcommands: [
+            SendCommand.self,
+            ReceiveCommand.self,
+            StatsCommand.self,
+            TestCommand.self,
+            ProbeCommand.self,
+            InfoCommand.self
+        ]
     )
 
     /// Creates a new instance of the root command.
     public init() {}
-
-    /// Runs the root command.
-    public func run() throws {
-        print("srt-cli — Pure Swift SRT protocol tool")
-        print("Use --help for available commands.")
-    }
 }

@@ -5,7 +5,7 @@ import SRTKitCommands
 
 @main
 struct SRTKitEntryCLI {
-    static func main() {
-        SRTCLIRoot.main()
+    static func main() async {
+        await SRTCLIRoot.main()
     }
 }
