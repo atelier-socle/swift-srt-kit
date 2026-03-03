@@ -161,7 +161,11 @@ struct AddressResolverCoverageTests {
         #expect(addr.port == 9000)
     }
 
-    @Test("resolve with valid IPv6 loopback succeeds")
+    @Test(
+        "resolve with valid IPv6 loopback succeeds",
+        .tags(.network),
+        .enabled(if: !isCI, "IPv6 loopback not available on GitHub Actions Linux runners")
+    )
     func resolveValidIPv6() throws {
         let addr = try AddressResolver.resolve(host: "::1", port: 9001)
         #expect(addr.port == 9001)

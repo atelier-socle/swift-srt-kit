@@ -14,7 +14,11 @@ struct AddressResolverTests {
         #expect(addr.port == 4200)
     }
 
-    @Test("Resolve IPv6 address string")
+    @Test(
+        "Resolve IPv6 address string",
+        .tags(.network),
+        .enabled(if: !isCI, "IPv6 loopback not available on GitHub Actions Linux runners")
+    )
     func resolveIPv6() throws {
         let addr = try AddressResolver.resolve(host: "::1", port: 4200)
         #expect(addr.port == 4200)
