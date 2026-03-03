@@ -13,8 +13,7 @@ struct SRTDatagramHandlerCoverageTests {
     func handlerCreation() {
         let (_, continuation) = AsyncStream<IncomingDatagram>.makeStream()
         let handler = SRTDatagramHandler(continuation: continuation)
-        // Verify the handler was created (non-nil object)
-        #expect(handler is SRTDatagramHandler)
+        _ = handler
         continuation.finish()
     }
 
