@@ -9,7 +9,7 @@ public struct SRTCLIRoot: AsyncParsableCommand {
     public static let configuration = CommandConfiguration(
         commandName: "srt-cli",
         abstract: "SRT streaming toolkit — pure Swift implementation",
-        version: "0.1.0",
+        version: "0.2.0",
         subcommands: [
             SendCommand.self,
             ReceiveCommand.self,

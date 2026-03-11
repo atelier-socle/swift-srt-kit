@@ -33,6 +33,34 @@ public enum SRTPeerAddress: Sendable, Equatable, Hashable {
         }
     }
 
+    /// Creates a peer address from a NIO `SocketAddress`.
+    ///
+    /// - Parameter socketAddress: The socket address to convert.
+    /// - Returns: The corresponding peer address.
+    public static func from(_ socketAddress: SocketAddress) -> SRTPeerAddress {
+        switch socketAddress {
+        case .v4(let addr):
+            let ip = addr.address.sin_addr.s_addr
+            let hostOrder = UInt32(bigEndian: ip)
+            return .ipv4(hostOrder)
+        case .v6(let addr):
+            let sin6Addr = addr.address.sin6_addr
+            return withUnsafeBytes(of: sin6Addr) { raw in
+                var high: UInt64 = 0
+                var low: UInt64 = 0
+                for i in 0..<8 {
+                    high = (high << 8) | UInt64(raw[i])
+                }
+                for i in 8..<16 {
+                    low = (low << 8) | UInt64(raw[i])
+                }
+                return .ipv6(high, low)
+            }
+        case .unixDomainSocket:
+            return .ipv4(0x7F00_0001)
+        }
+    }
+
     /// Decodes a 128-bit peer address from a buffer.
     ///
     /// If the high 80 bits match the IPv4-mapped IPv6 prefix (`::ffff:`),

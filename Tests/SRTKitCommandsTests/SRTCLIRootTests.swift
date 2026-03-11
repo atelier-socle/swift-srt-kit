@@ -14,7 +14,7 @@ struct SRTCLIRootTests {
 
     @Test("Version is set")
     func versionIsSet() {
-        #expect(SRTCLIRoot.configuration.version == "0.1.0")
+        #expect(SRTCLIRoot.configuration.version == "0.2.0")
     }
 
     @Test("Abstract is set")

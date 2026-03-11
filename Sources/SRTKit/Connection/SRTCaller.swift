@@ -260,8 +260,15 @@ extension SRTCaller {
     private func setupTransport(
         remoteAddress: SocketAddress
     ) async throws -> TransportSetup {
+        let bindHost: String
+        switch remoteAddress {
+        case .v6:
+            bindHost = "::"
+        case .v4, .unixDomainSocket:
+            bindHost = "0.0.0.0"
+        }
         let transportConfig = UDPTransport.Configuration(
-            host: "0.0.0.0", port: 0)
+            host: bindHost, port: 0)
         let udpTransport = UDPTransport(configuration: transportConfig)
         _ = try await udpTransport.bind()
         self.transport = udpTransport
@@ -558,15 +565,6 @@ extension SRTCaller {
     private static func peerAddressFromSocketAddress(
         _ address: SocketAddress
     ) -> SRTPeerAddress {
-        switch address {
-        case .v4(let addr):
-            let ip = addr.address.sin_addr.s_addr
-            let hostOrder = UInt32(bigEndian: ip)
-            return .ipv4(hostOrder)
-        case .v6:
-            return .ipv4(0x7F00_0001)  // fallback to 127.0.0.1
-        case .unixDomainSocket:
-            return .ipv4(0x7F00_0001)
-        }
+        SRTPeerAddress.from(address)
     }
 }

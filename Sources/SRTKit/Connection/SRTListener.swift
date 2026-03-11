@@ -486,16 +486,7 @@ extension SRTListener {
     private static func peerAddressFromSocketAddress(
         _ address: SocketAddress
     ) -> SRTPeerAddress {
-        switch address {
-        case .v4(let addr):
-            let ip = addr.address.sin_addr.s_addr
-            let hostOrder = UInt32(bigEndian: ip)
-            return .ipv4(hostOrder)
-        case .v6:
-            return .ipv4(0x7F00_0001)
-        case .unixDomainSocket:
-            return .ipv4(0x7F00_0001)
-        }
+        SRTPeerAddress.from(address)
     }
 
     /// Extract the port number from a SocketAddress.

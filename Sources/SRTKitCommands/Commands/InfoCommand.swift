@@ -22,7 +22,7 @@ public struct InfoCommand: AsyncParsableCommand {
 
     /// Runs the info command.
     public mutating func run() async throws {
-        print("srt-cli v0.1.0")
+        print("srt-cli v0.2.0")
         print("Secure Reliable Transport — Pure Swift Implementation")
         print("")
         print("Features:")
