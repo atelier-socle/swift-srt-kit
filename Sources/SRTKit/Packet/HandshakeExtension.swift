@@ -188,7 +188,12 @@ public struct SRTHandshakeExtension: Sendable, Equatable {
 
 /// A Stream ID handshake extension carrying a UTF-8 string.
 ///
-/// The content is padded to a 4-byte boundary with null bytes.
+/// The content is null-padded to a 4-byte boundary. Each 4-byte chunk
+/// is written as a UInt32 word with the first string byte in the
+/// least-significant position. This matches the SRT wire format where
+/// libsrt treats extension content as 32-bit words in network byte order,
+/// effectively inverting the bytes within each 4-byte group.
+///
 /// Maximum stream ID length is 512 bytes.
 public struct StreamIDExtension: Sendable, Equatable {
     /// The maximum stream ID length in bytes.
@@ -206,17 +211,28 @@ public struct StreamIDExtension: Sendable, Equatable {
 
     /// Encodes this extension into a buffer, padded to a 4-byte boundary.
     ///
+    /// Each 4-byte chunk is written as a UInt32 word with the first
+    /// string byte in the least-significant position (SRT wire format).
+    ///
     /// - Parameter buffer: The buffer to write into.
     public func encode(into buffer: inout ByteBuffer) {
-        let bytes = Array(streamID.utf8)
-        buffer.writeBytes(bytes)
+        var bytes = Array(streamID.utf8)
         let padding = (4 - (bytes.count % 4)) % 4
-        for _ in 0..<padding {
-            buffer.writeInteger(UInt8(0))
+        bytes.append(contentsOf: repeatElement(UInt8(0), count: padding))
+        for i in stride(from: 0, to: bytes.count, by: 4) {
+            let word =
+                UInt32(bytes[i])
+                | UInt32(bytes[i + 1]) << 8
+                | UInt32(bytes[i + 2]) << 16
+                | UInt32(bytes[i + 3]) << 24
+            buffer.writeInteger(word)
         }
     }
 
     /// Decodes a stream ID extension from a buffer.
+    ///
+    /// Each 4-byte chunk is read as a UInt32 word with the first
+    /// string byte in the least-significant position (SRT wire format).
     ///
     /// - Parameters:
     ///   - buffer: The buffer to read from.
@@ -225,10 +241,19 @@ public struct StreamIDExtension: Sendable, Equatable {
     /// - Throws: `SRTError.invalidPacket` if the buffer is too small or the string is invalid.
     public static func decode(from buffer: inout ByteBuffer, length: Int) throws -> StreamIDExtension {
         guard buffer.readableBytes >= length else {
-            throw SRTError.invalidPacket("StreamID requires \(length) bytes, got \(buffer.readableBytes)")
+            throw SRTError.invalidPacket(
+                "StreamID requires \(length) bytes, got \(buffer.readableBytes)")
         }
-        guard let bytes = buffer.readBytes(length: length) else {
-            throw SRTError.invalidPacket("Failed to read StreamID bytes")
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(length)
+        for _ in 0..<(length / 4) {
+            guard let word = buffer.readInteger(as: UInt32.self) else {
+                throw SRTError.invalidPacket("Failed to read StreamID word")
+            }
+            bytes.append(UInt8(truncatingIfNeeded: word))
+            bytes.append(UInt8(truncatingIfNeeded: word >> 8))
+            bytes.append(UInt8(truncatingIfNeeded: word >> 16))
+            bytes.append(UInt8(truncatingIfNeeded: word >> 24))
         }
         // Remove trailing null padding
         let trimmed = Array(bytes.prefix { $0 != 0 })

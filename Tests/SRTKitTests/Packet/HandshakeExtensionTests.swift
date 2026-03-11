@@ -154,6 +154,52 @@ struct HandshakeExtensionTests {
         #expect(decoded.streamID == longString)
     }
 
+    @Test("StreamID wire format matches SRT spec — bytes inverted per 4-byte chunk")
+    func streamIDWireFormat() throws {
+        // SRT spec: "STREAM" → padded "STREAM\0\0" → wire "ERTS\0\0MA"
+        let ext = StreamIDExtension(streamID: "STREAM")
+        var buffer = ByteBufferAllocator().buffer(capacity: 16)
+        ext.encode(into: &buffer)
+        let readResult = buffer.readBytes(length: buffer.readableBytes)
+        let wireBytes = try #require(readResult)
+        let expected: [UInt8] = [
+            0x45, 0x52, 0x54, 0x53,  // "ERTS" (inverted "STRE")
+            0x00, 0x00, 0x4D, 0x41  // "\0\0MA" (inverted "AM\0\0")
+        ]
+        #expect(wireBytes == expected)
+    }
+
+    @Test("StreamID wire format roundtrip with libsrt-compatible bytes")
+    func streamIDWireFormatDecode() throws {
+        // Simulate receiving "STREAM" from libsrt (wire bytes are inverted)
+        var buffer = ByteBufferAllocator().buffer(capacity: 8)
+        buffer.writeBytes([
+            0x45, 0x52, 0x54, 0x53,  // "ERTS"
+            0x00, 0x00, 0x4D, 0x41  // "\0\0MA"
+        ])
+        let decoded = try StreamIDExtension.decode(from: &buffer, length: 8)
+        #expect(decoded.streamID == "STREAM")
+    }
+
+    @Test("StreamID access control wire format")
+    func streamIDAccessControlWireFormat() throws {
+        let sid = "#!::r=live/feed1,m=publish"
+        let ext = StreamIDExtension(streamID: sid)
+        var buffer = ByteBufferAllocator().buffer(capacity: 32)
+        ext.encode(into: &buffer)
+        let len = buffer.readableBytes
+        let decoded = try StreamIDExtension.decode(from: &buffer, length: len)
+        #expect(decoded.streamID == sid)
+        // Verify wire bytes are NOT the same as raw UTF-8 (they are inverted)
+        buffer.clear()
+        ext.encode(into: &buffer)
+        let readWire = buffer.readBytes(length: buffer.readableBytes)
+        let wire = try #require(readWire)
+        let raw = Array(sid.utf8)
+        // First 4 bytes must differ (unless the string happens to be a palindrome)
+        #expect(wire[0] != raw[0])
+    }
+
     // MARK: - HandshakeExtensionHeader
 
     @Test("Extension header encode/decode")
