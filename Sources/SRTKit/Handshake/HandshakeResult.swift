@@ -16,8 +16,10 @@ public struct HandshakeResult: Sendable, Equatable {
     public let senderTSBPDDelay: UInt16
     /// The negotiated receiver TSBPD delay in milliseconds.
     public let receiverTSBPDDelay: UInt16
-    /// The initial packet sequence number for data transfer.
+    /// The peer's initial packet sequence number (for receiving).
     public let initialSequenceNumber: SequenceNumber
+    /// The local initial packet sequence number (for sending).
+    public let localInitialSequenceNumber: SequenceNumber
     /// The negotiated maximum transmission unit size.
     public let maxTransmissionUnitSize: UInt32
     /// The negotiated maximum flow window size.
@@ -39,7 +41,8 @@ public struct HandshakeResult: Sendable, Equatable {
     ///   - negotiatedFlags: The negotiated SRT capability flags.
     ///   - senderTSBPDDelay: The negotiated sender TSBPD delay in milliseconds.
     ///   - receiverTSBPDDelay: The negotiated receiver TSBPD delay in milliseconds.
-    ///   - initialSequenceNumber: The initial packet sequence number.
+    ///   - initialSequenceNumber: The peer's initial packet sequence number.
+    ///   - localInitialSequenceNumber: The local initial packet sequence number.
     ///   - maxTransmissionUnitSize: The negotiated MTU size.
     ///   - maxFlowWindowSize: The negotiated flow window size.
     ///   - streamID: The stream ID, or nil.
@@ -53,6 +56,7 @@ public struct HandshakeResult: Sendable, Equatable {
         senderTSBPDDelay: UInt16,
         receiverTSBPDDelay: UInt16,
         initialSequenceNumber: SequenceNumber,
+        localInitialSequenceNumber: SequenceNumber = SequenceNumber(0),
         maxTransmissionUnitSize: UInt32,
         maxFlowWindowSize: UInt32,
         streamID: String?,
@@ -66,6 +70,7 @@ public struct HandshakeResult: Sendable, Equatable {
         self.senderTSBPDDelay = senderTSBPDDelay
         self.receiverTSBPDDelay = receiverTSBPDDelay
         self.initialSequenceNumber = initialSequenceNumber
+        self.localInitialSequenceNumber = localInitialSequenceNumber
         self.maxTransmissionUnitSize = maxTransmissionUnitSize
         self.maxFlowWindowSize = maxFlowWindowSize
         self.streamID = streamID

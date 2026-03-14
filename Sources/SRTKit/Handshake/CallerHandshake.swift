@@ -27,6 +27,8 @@ public struct CallerHandshake: Sendable {
     private var generatedSalt: [UInt8] = []
     /// The generated Stream Encrypting Key (stored for HandshakeResult).
     private var generatedSEK: [UInt8] = []
+    /// The local initial sequence number advertised in the Conclusion.
+    private var localISN: SequenceNumber = SequenceNumber(0)
 
     /// Creates a new caller handshake state machine.
     ///
@@ -165,11 +167,13 @@ public struct CallerHandshake: Sendable {
             extFlags.insert(.config)
         }
 
+        localISN = SequenceNumber(UInt32.random(in: 0...SequenceNumber.max))
+
         let conclusionPacket = HandshakePacket(
             version: 5,
             encryptionField: configuration.cipherType,
             extensionField: extFlags.rawValue,
-            initialPacketSequenceNumber: SequenceNumber(0),
+            initialPacketSequenceNumber: localISN,
             maxTransmissionUnitSize: configuration.maxTransmissionUnitSize,
             maxFlowWindowSize: configuration.maxFlowWindowSize,
             handshakeType: .conclusion,
@@ -238,6 +242,7 @@ public struct CallerHandshake: Sendable {
             senderTSBPDDelay: negotiatedSenderDelay,
             receiverTSBPDDelay: negotiatedReceiverDelay,
             initialSequenceNumber: handshake.initialPacketSequenceNumber,
+            localInitialSequenceNumber: localISN,
             maxTransmissionUnitSize: min(
                 configuration.maxTransmissionUnitSize, handshake.maxTransmissionUnitSize
             ),

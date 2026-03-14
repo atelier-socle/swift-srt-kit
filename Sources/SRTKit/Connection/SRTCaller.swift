@@ -344,7 +344,8 @@ extension SRTCaller {
             * 1000
         let pipelineConfig = PacketPipeline.Configuration(
             latencyMicroseconds: negotiatedLatency,
-            initialSequenceNumber: result.initialSequenceNumber
+            initialSequenceNumber: result.initialSequenceNumber,
+            sendInitialSequenceNumber: result.localInitialSequenceNumber
         )
         let srtSocket = SRTSocket(
             role: .caller,

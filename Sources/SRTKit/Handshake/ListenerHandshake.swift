@@ -61,7 +61,7 @@ public struct ListenerHandshake: Sendable {
             timeBucket: timeBucket
         )
 
-        // SRT magic extension field: HSREQ(0x0001) + KMREQ(0x0002) + CONFIG(0x0004) = 0x4A17
+        // SRT magic number in Induction Response signals HSv5 support to the caller.
         let extensionField: UInt16 = 0x4A17
 
         let responsePacket = HandshakePacket(
@@ -258,6 +258,36 @@ public struct ListenerHandshake: Sendable {
         return buildRejection(reason: .unsecure, handshake: handshake, peerAddress: peerAddress)
     }
 
+    /// Negotiated parameters from HSREQ extension.
+    private struct NegotiatedParams {
+        let version: UInt32
+        let flags: SRTFlags
+        let senderDelay: UInt16
+        let receiverDelay: UInt16
+    }
+
+    /// Negotiates version, flags, and latency from the remote HSREQ extension.
+    private func negotiateParams(
+        remoteHSREQ: SRTHandshakeExtension?
+    ) -> NegotiatedParams {
+        guard let hsreq = remoteHSREQ else {
+            return NegotiatedParams(
+                version: configuration.srtVersion, flags: configuration.srtFlags,
+                senderDelay: configuration.senderTSBPDDelay,
+                receiverDelay: configuration.receiverTSBPDDelay)
+        }
+        let latency = LatencyNegotiator.negotiate(
+            localSenderDelay: configuration.senderTSBPDDelay,
+            localReceiverDelay: configuration.receiverTSBPDDelay,
+            remoteSenderDelay: hsreq.senderTSBPDDelay,
+            remoteReceiverDelay: hsreq.receiverTSBPDDelay)
+        return NegotiatedParams(
+            version: min(configuration.srtVersion, hsreq.srtVersion),
+            flags: SRTFlags(rawValue: configuration.srtFlags.rawValue & hsreq.srtFlags.rawValue),
+            senderDelay: latency.senderDelay,
+            receiverDelay: latency.receiverDelay)
+    }
+
     /// Negotiates latency, builds HSRSP/KMRSP extensions, and returns success actions.
     private mutating func buildConclusionResponse(
         handshake: HandshakePacket,
@@ -265,63 +295,44 @@ public struct ListenerHandshake: Sendable {
         remoteHSREQ: SRTHandshakeExtension?,
         streamID: String?
     ) -> [HandshakeAction] {
-        var senderDelay = configuration.senderTSBPDDelay
-        var receiverDelay = configuration.receiverTSBPDDelay
-        var version = configuration.srtVersion
-        var flags = configuration.srtFlags
-
-        if let hsreq = remoteHSREQ {
-            let latency = LatencyNegotiator.negotiate(
-                localSenderDelay: configuration.senderTSBPDDelay,
-                localReceiverDelay: configuration.receiverTSBPDDelay,
-                remoteSenderDelay: hsreq.senderTSBPDDelay,
-                remoteReceiverDelay: hsreq.receiverTSBPDDelay
-            )
-            senderDelay = latency.senderDelay
-            receiverDelay = latency.receiverDelay
-            version = min(configuration.srtVersion, hsreq.srtVersion)
-            flags = SRTFlags(rawValue: configuration.srtFlags.rawValue & hsreq.srtFlags.rawValue)
-        }
+        let params = negotiateParams(remoteHSREQ: remoteHSREQ)
 
         let hsrsp = SRTHandshakeExtension(
-            srtVersion: version, srtFlags: flags,
-            receiverTSBPDDelay: receiverDelay, senderTSBPDDelay: senderDelay
-        )
+            srtVersion: params.version, srtFlags: params.flags,
+            receiverTSBPDDelay: params.receiverDelay, senderTSBPDDelay: params.senderDelay)
         var responseExtensions: [HandshakeExtensionData] = [.hsrsp(hsrsp)]
+        var respExtFlags: HandshakePacket.ExtensionFlags = [.hsreq]
         if let km = buildKMRSP(peerEncryptionField: handshake.encryptionField) {
             responseExtensions.append(.kmrsp(km))
+            respExtFlags.insert(.kmreq)
         }
 
+        let listenerISN = SequenceNumber(UInt32.random(in: 0...SequenceNumber.max))
         let responsePacket = HandshakePacket(
             version: 5,
             encryptionField: configuration.cipherType,
-            extensionField: HandshakePacket.ExtensionFlags([.hsreq]).rawValue,
-            initialPacketSequenceNumber: SequenceNumber(0),
+            extensionField: respExtFlags.rawValue,
+            initialPacketSequenceNumber: listenerISN,
             maxTransmissionUnitSize: configuration.maxTransmissionUnitSize,
             maxFlowWindowSize: configuration.maxFlowWindowSize,
             handshakeType: .conclusion,
             srtSocketID: configuration.localSocketID,
             synCookie: 0,
-            peerIPAddress: peerAddress
-        )
+            peerIPAddress: peerAddress)
 
         state = .done
         let result = HandshakeResult(
             peerSocketID: handshake.srtSocketID,
-            negotiatedSRTVersion: version,
-            negotiatedFlags: flags,
-            senderTSBPDDelay: senderDelay,
-            receiverTSBPDDelay: receiverDelay,
+            negotiatedSRTVersion: params.version, negotiatedFlags: params.flags,
+            senderTSBPDDelay: params.senderDelay, receiverTSBPDDelay: params.receiverDelay,
             initialSequenceNumber: handshake.initialPacketSequenceNumber,
+            localInitialSequenceNumber: listenerISN,
             maxTransmissionUnitSize: min(
-                configuration.maxTransmissionUnitSize, handshake.maxTransmissionUnitSize
-            ),
+                configuration.maxTransmissionUnitSize, handshake.maxTransmissionUnitSize),
             maxFlowWindowSize: min(configuration.maxFlowWindowSize, handshake.maxFlowWindowSize),
-            streamID: streamID,
-            peerAddress: peerAddress,
+            streamID: streamID, peerAddress: peerAddress,
             encryptionSalt: unwrappedSEK.isEmpty ? nil : receivedSalt,
-            encryptionSEK: unwrappedSEK.isEmpty ? nil : unwrappedSEK
-        )
+            encryptionSEK: unwrappedSEK.isEmpty ? nil : unwrappedSEK)
 
         return [
             .sendPacket(responsePacket, extensions: responseExtensions),
@@ -374,22 +385,4 @@ public struct ListenerHandshake: Sendable {
         return nil
     }
 
-    /// Converts a cipher type field value to a ``KeyMaterialPacket/CipherType``.
-    private func cipherTypeFromField(_ field: UInt16) -> KeyMaterialPacket.CipherType {
-        switch field {
-        case 2: .aesCTR
-        case 3: .aesGCM
-        default: .none
-        }
-    }
-
-    /// Returns the key length in bytes for the given cipher type field.
-    private func keyLengthFromCipherType(_ cipherType: UInt16) -> UInt16 {
-        switch cipherType {
-        case 2: 16
-        case 3: 16
-        case 4: 32
-        default: 16
-        }
-    }
 }

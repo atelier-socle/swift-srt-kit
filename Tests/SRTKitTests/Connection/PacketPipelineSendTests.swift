@@ -227,7 +227,7 @@ struct PacketPipelineSendTests {
     func customInitialSequence() throws {
         var pipeline = PacketPipeline(
             configuration: .init(
-                initialSequenceNumber: SequenceNumber(100)))
+                sendInitialSequenceNumber: SequenceNumber(100)))
         let result = try pipeline.processSend(
             payload: [0x01], currentTime: 1000)
         if case .transmit(let packets) = result {

@@ -364,7 +364,8 @@ extension SRTListener {
 
         let pipelineConfig = PacketPipeline.Configuration(
             latencyMicroseconds: negotiatedLatency,
-            initialSequenceNumber: result.initialSequenceNumber
+            initialSequenceNumber: result.initialSequenceNumber,
+            sendInitialSequenceNumber: result.localInitialSequenceNumber
         )
         let socket = SRTSocket(
             role: .listener,

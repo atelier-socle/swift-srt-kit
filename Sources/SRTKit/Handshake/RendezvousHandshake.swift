@@ -23,6 +23,8 @@ public struct RendezvousHandshake: Sendable {
     private var peerSocketID: UInt32 = 0
     /// The peer's address learned from Phase 1.
     private var peerAddress: SRTPeerAddress = .ipv4(0)
+    /// The local initial sequence number advertised in the Conclusion.
+    private var localISN: SequenceNumber = SequenceNumber(0)
 
     /// Creates a new rendezvous handshake state machine.
     ///
@@ -177,10 +179,13 @@ public struct RendezvousHandshake: Sendable {
             extFlags.insert(.config)
         }
 
+        localISN = SequenceNumber(UInt32.random(in: 0...SequenceNumber.max))
+
         let conclusionPacket = HandshakePacket(
             version: 5,
             encryptionField: configuration.cipherType,
             extensionField: extFlags.rawValue,
+            initialPacketSequenceNumber: localISN,
             maxTransmissionUnitSize: configuration.maxTransmissionUnitSize,
             maxFlowWindowSize: configuration.maxFlowWindowSize,
             handshakeType: .conclusion,
@@ -239,6 +244,7 @@ public struct RendezvousHandshake: Sendable {
                     senderTSBPDDelay: negotiated.senderDelay,
                     receiverTSBPDDelay: negotiated.receiverDelay,
                     initialSequenceNumber: handshake.initialPacketSequenceNumber,
+                    localInitialSequenceNumber: localISN,
                     maxTransmissionUnitSize: min(
                         configuration.maxTransmissionUnitSize,
                         handshake.maxTransmissionUnitSize
@@ -287,6 +293,7 @@ public struct RendezvousHandshake: Sendable {
                     senderTSBPDDelay: configuration.senderTSBPDDelay,
                     receiverTSBPDDelay: configuration.receiverTSBPDDelay,
                     initialSequenceNumber: handshake.initialPacketSequenceNumber,
+                    localInitialSequenceNumber: localISN,
                     maxTransmissionUnitSize: configuration.maxTransmissionUnitSize,
                     maxFlowWindowSize: configuration.maxFlowWindowSize,
                     streamID: configuration.streamID,

@@ -88,7 +88,7 @@ public struct PacketPipeline: Sendable {
         self.lossDetector = LossDetector()
         self.driftManager = DriftManager()
         self.tooLateDrop = TooLatePacketDrop()
-        self.nextSequenceNumber = configuration.initialSequenceNumber
+        self.nextSequenceNumber = configuration.sendInitialSequenceNumber
 
         if configuration.fecEnabled, let fecConfig = configuration.fecConfiguration {
             self.fecEncoder = FECEncoder(configuration: fecConfig)

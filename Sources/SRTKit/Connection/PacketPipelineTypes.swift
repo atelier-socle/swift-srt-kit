@@ -80,8 +80,10 @@ extension PacketPipeline {
         public let cipherMode: CipherMode
         /// Latency in microseconds for TSBPD.
         public let latencyMicroseconds: UInt64
-        /// Initial sequence number for buffers.
+        /// Initial sequence number for the receive buffer (peer's ISN).
         public let initialSequenceNumber: SequenceNumber
+        /// Initial sequence number for outgoing packets (local ISN).
+        public let sendInitialSequenceNumber: SequenceNumber
         /// Send buffer capacity.
         public let sendBufferCapacity: Int
 
@@ -93,7 +95,8 @@ extension PacketPipeline {
         ///   - fecConfiguration: FEC configuration.
         ///   - cipherMode: Cipher mode.
         ///   - latencyMicroseconds: Latency in microseconds.
-        ///   - initialSequenceNumber: Initial sequence number.
+        ///   - initialSequenceNumber: Initial sequence number for receiving.
+        ///   - sendInitialSequenceNumber: Initial sequence number for sending.
         ///   - sendBufferCapacity: Send buffer capacity.
         public init(
             encryptionEnabled: Bool = false,
@@ -102,6 +105,7 @@ extension PacketPipeline {
             cipherMode: CipherMode = .ctr,
             latencyMicroseconds: UInt64 = 120_000,
             initialSequenceNumber: SequenceNumber = SequenceNumber(0),
+            sendInitialSequenceNumber: SequenceNumber = SequenceNumber(0),
             sendBufferCapacity: Int = 8192
         ) {
             self.encryptionEnabled = encryptionEnabled
@@ -110,6 +114,7 @@ extension PacketPipeline {
             self.cipherMode = cipherMode
             self.latencyMicroseconds = latencyMicroseconds
             self.initialSequenceNumber = initialSequenceNumber
+            self.sendInitialSequenceNumber = sendInitialSequenceNumber
             self.sendBufferCapacity = sendBufferCapacity
         }
     }
