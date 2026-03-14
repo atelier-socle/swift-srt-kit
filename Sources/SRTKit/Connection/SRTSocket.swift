@@ -70,6 +70,12 @@ public actor SRTSocket {
     /// Statistics collector for tracking connection metrics.
     private var statisticsCollector = StatisticsCollector()
 
+    /// Next message number for outgoing data packets (1-based, wraps at 0x03FF_FFFF).
+    private var nextMessageNumber: UInt32 = 1
+
+    /// Maximum message number value (26-bit field).
+    private static let maxMessageNumber: UInt32 = 0x03FF_FFFF
+
     /// Create a socket.
     ///
     /// - Parameters:
@@ -376,12 +382,26 @@ public actor SRTSocket {
             transitionTo(.closing)
             transitionTo(.closed)
         case .ack:
-            break  // Would parse ACK CIF and call pipeline.processACK
+            handleACK(packet)
         case .nak:
             statisticsCollector.recordPacketLost()
         default:
             break
         }
+    }
+
+    /// Process an incoming ACK: update send buffer and respond with ACKACK.
+    private func handleACK(_ packet: SRTControlPacket) {
+        var cifBuffer = ByteBuffer(bytes: packet.controlInfoField)
+        if let ack = try? ACKPacket.decode(from: &cifBuffer, cifLength: packet.controlInfoField.count) {
+            pipeline.processACK(
+                ackNumber: ack.acknowledgementNumber,
+                rtt: UInt64(ack.rtt ?? 0),
+                bandwidth: UInt64(ack.estimatedLinkCapacity ?? 0),
+                availableBuffer: Int(ack.availableBufferSize ?? 8192)
+            )
+        }
+        sendControlToWire(controlType: .ackack, typeSpecificInfo: packet.typeSpecificInfo, cif: .ackack)
     }
 
     /// Encode and send a data packet to the wire via the channel.
@@ -395,11 +415,13 @@ public actor SRTSocket {
             orderFlag: false,
             encryptionKey: pipeline.isEncryptionActive ? .even : .none,
             retransmitted: pkt.isRetransmit,
-            messageNumber: 0,
+            messageNumber: nextMessageNumber,
             timestamp: pkt.timestamp,
             destinationSocketID: destID,
             payload: pkt.payload
         )
+
+        nextMessageNumber = nextMessageNumber >= Self.maxMessageNumber ? 1 : nextMessageNumber + 1
         var buffer = ByteBuffer()
         PacketCodec.encode(.data(dataPacket), into: &buffer)
         Task { try? await channel.send(buffer) }
