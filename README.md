@@ -31,7 +31,7 @@ Pure Swift implementation of the Secure Reliable Transport (SRT) protocol. UDP-b
 - **Cross-platform** — macOS 14+, iOS 17+, tvOS 17+, watchOS 10+, visionOS 1+, and Linux (Ubuntu 22.04+ with Swift 6.2)
 - **CLI tool** — `srt-cli` for sending, receiving, probing, statistics, loopback testing, and diagnostics
 - **Swift 6.2 strict concurrency** — Actors for stateful types, `Sendable` everywhere, `async`/`await` throughout, zero `@unchecked Sendable` or `nonisolated(unsafe)`
-- **Interop with libsrt** — Bidirectional interoperability with libsrt 1.5.4 validated for both encrypted and unencrypted connections
+- **Interop with libsrt and MediaMTX** — Bidirectional interoperability with libsrt 1.5.4 and MPEG-TS publishing to MediaMTX 1.16.3 validated for both encrypted and unencrypted connections
 
 ---
 
@@ -76,7 +76,7 @@ Add the dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/atelier-socle/swift-srt-kit.git", from: "0.2.0")
+    .package(url: "https://github.com/atelier-socle/swift-srt-kit.git", from: "0.3.0")
 ]
 ```
 

@@ -4,11 +4,11 @@ Connect SRTKit with libsrt and other SRT implementations.
 
 ## Overview
 
-SRTKit is fully interoperable with libsrt 1.5.4, both for unencrypted and encrypted connections. This guide covers tested interop scenarios, configuration alignment, and known compatibility notes.
+SRTKit is fully interoperable with libsrt 1.5.4 and MediaMTX 1.16.3, both for unencrypted and encrypted connections. This guide covers tested interop scenarios, configuration alignment, and known compatibility notes.
 
 ### Tested Interop Scenarios
 
-SRTKit has been validated in bidirectional interop with libsrt:
+SRTKit has been validated in bidirectional interop with libsrt and MediaMTX:
 
 | Scenario | Direction | Encryption | Status |
 |----------|-----------|------------|--------|
@@ -16,6 +16,7 @@ SRTKit has been validated in bidirectional interop with libsrt:
 | SRTKit caller → libsrt listener | Send | AES-128-CTR | Validated |
 | libsrt caller → SRTKit listener | Receive | None | Validated |
 | libsrt caller → SRTKit listener | Receive | AES-128-CTR | Validated |
+| SRTKit caller → MediaMTX 1.16.3 | MPEG-TS publish | None | Validated |
 
 ### Using srt-live-transmit
 
@@ -55,12 +56,42 @@ When connecting SRTKit to libsrt, ensure these parameters match:
 
 ### StreamID Interop
 
-SRTKit's StreamID format (`#!::r=resource,m=publish`) is compatible with the SRT Alliance specification used by libsrt:
+SRT servers use two StreamID formats. SRTKit supports both:
+
+| Format | Example | Used By |
+|--------|---------|---------|
+| SRT Access Control | `#!::r=live/test,m=publish` | libsrt, Haivision |
+| Short format | `publish:live/test` | MediaMTX |
 
 ```bash
-# libsrt with StreamID
+# libsrt with SRT Access Control StreamID
 srt-live-transmit file://input.ts "srt://127.0.0.1:4200?streamid=#!::r=live,m=publish"
+
+# MediaMTX uses the same StreamID — it parses the #!:: prefix internally
+srt-live-transmit file://input.ts "srt://127.0.0.1:8890?streamid=#!::r=live/test,m=publish"
 ```
+
+### MediaMTX Integration
+
+MediaMTX is a popular SRT/RTMP/HLS relay server. To publish MPEG-TS via SRTKit:
+
+```swift
+let caller = SRTCaller(configuration: .init(
+    host: "localhost",
+    port: 8890,
+    streamID: "#!::r=live/test,m=publish",
+    latency: 120_000
+))
+try await caller.connect()
+
+// Send MPEG-TS chunks (7 × 188 = 1316 bytes each)
+for chunk in tsChunks {
+    _ = try await caller.send(chunk)
+}
+await caller.disconnect()
+```
+
+MediaMTX will log `is publishing to path 'live/test'` and relay the stream via RTMP, HLS, or WebRTC.
 
 ## Next Steps
 

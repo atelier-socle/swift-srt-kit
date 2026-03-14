@@ -56,6 +56,7 @@ await caller.disconnect()
 
 ### Essentials
 
+- <doc:WhatsNew030>
 - <doc:GettingStarted>
 - <doc:CallerGuide>
 - <doc:ListenerGuide>
